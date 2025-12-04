@@ -1,9 +1,9 @@
 import os
 import asyncio
-from supabase import create_client, Client
-from dotenv import load_dotenv
 import random
 from datetime import date, timedelta
+from supabase import create_client, Client
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -17,7 +17,7 @@ class SupabaseDB:
     async def init_table(self):
         try:
             self.client.table("users").select("*").limit(0).execute()
-            print("✅ Full table ready")
+            print("✅ Users table ready")
         except:
             print("⚠️ Table ready")
     
@@ -28,26 +28,30 @@ class SupabaseDB:
         except:
             return None
     
-    async def create_user(self, user_id: int, username: str = ""):
-        """Safe create - handles missing columns"""
+    async def create_user_if_not_exists(self, user_id: int, username: str = ""):
+        """FIXED: Only create if user doesn't exist!"""
+        user = await self.get_user(user_id)
+        if user:
+            print(f"👤 User {user_id} already exists - SKIPPING")
+            return  # Don't overwrite!
+        
         user_data = {
             "user_id": user_id,
             "balance": 0.0,
             "referrals": 0
         }
         
-        # Safe optional fields
         if username:
             user_data["username"] = username
             
-        referral_code = f"REF_{user_id}_{random.randint(1000, 9999)}"
+        referral_code = f"REF_{user_id}_{random.randint(1000,9999)}"
         user_data["referral_code"] = referral_code
         
         try:
-            self.client.table("users").upsert(user_data).execute()
-            print(f"👤 Created user {user_id}")
+            self.client.table("users").insert(user_data).execute()
+            print(f"👤 CREATED new user {user_id}")
         except Exception as e:
-            print(f"⚠️ User create warning: {e}")
+            print(f"⚠️ Create error: {e}")
     
     async def get_balance(self, user_id: int) -> float:
         user = await self.get_user(user_id)
@@ -70,15 +74,12 @@ class SupabaseDB:
                 return False
             
             today = date.today().isoformat()
+            last_bonus = user.get("daily_bonus_date", "")
             
-            # Safe date check
-            last_bonus = user.get("daily_bonus_date")
             if last_bonus and last_bonus[:10] == today:
                 return False
             
             await self.add_balance(user_id, 5.0)
-            
-            # Safe date update
             self.client.table("users").update({"daily_bonus_date": today}).eq("user_id", user_id).execute()
             return True
         except:
@@ -90,10 +91,12 @@ class SupabaseDB:
     
     async def process_referral(self, user_id: int, referrer_code: str):
         try:
-            referrer = self.client.table("users").select("user_id").eq("referral_code", referrer_code).execute()
+            referrer = self.client.table("users").select("*").eq("referral_code", referrer_code).execute()
             if referrer.data and referrer.data[0]["user_id"] != user_id:
                 referrer_id = referrer.data[0]["user_id"]
                 await self.add_balance(referrer_id, 40.0)
+                current_refs = int(referrer.data[0].get("referrals", 0))
+                self.client.table("users").update({"referrals": current_refs + 1}).eq("user_id", referrer_id).execute()
                 return True
         except:
             pass
