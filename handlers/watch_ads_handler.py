@@ -53,14 +53,18 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print(f"✅ Referral processed: {user_id} → {referrer_id}")
                 
                 # NOTIFY REFERRER - NOT NEW USER!
+                # FIXED: Escape @ symbol and use plain text format
                 try:
+                    notification_text = (
+                        f"🎉 Someone joined via your referral!\n\n"
+                        f"👤 User: {username}\n"
+                        f"💰 You earned: 40 Rs\n"
+                        f"💳 Check balance for details!"
+                    )
                     await context.bot.send_message(
                         referrer_id,
-                        f"🎉 **Someone joined via your referral!**\n\n"
-                        f"👤 **User:** @{username}\n"
-                        f"💰 **You earned: 40 Rs**\n"
-                        f"💳 **Check balance for details!**",
-                        parse_mode='Markdown'
+                        notification_text,
+                        parse_mode=None  # NO MARKDOWN - plain text only
                     )
                     print(f"📬 Notification sent to referrer {referrer_id}")
                 except Exception as e:
@@ -235,7 +239,8 @@ async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"👤 User: {user_id}\n"
             f"💰 Amount: {bal:.1f} Rs\n"
             f"💳 Method: {method}\n"
-            f"📅 {date.today()}"
+            f"📅 {date.today()}",
+            parse_mode='Markdown'
         )
     except:
         pass
