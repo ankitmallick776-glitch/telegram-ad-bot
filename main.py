@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
+import asyncio
 import logging
 import os
-import asyncio
 from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from handlers.watch_ads_handler import (
@@ -17,11 +17,9 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN missing!")
 
-def main():
+async def main():
     from utils.supabase import db
-    
-    print("⏳ Initializing database...")
-    asyncio.run(db.init_table())
+    await db.init_table()
     print("✅ Cashyads2 Ready!")
     
     app = Application.builder().token(BOT_TOKEN).build()
@@ -45,11 +43,10 @@ def main():
     print("🤖 Cashyads2 LIVE!")
     print("Press Ctrl+C to stop\n")
     
-    # NO AWAIT - run_polling() is NOT async!
-    app.run_polling(drop_pending_updates=True)
+    await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     try:
-        main()
+        asyncio.run(main())
     except KeyboardInterrupt:
         print("\n✅ Bot stopped cleanly")
