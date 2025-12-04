@@ -29,7 +29,6 @@ class SupabaseDB:
             return None
     
     async def create_user_if_not_exists(self, user_id: int, username: str = ""):
-        """Only create if user doesn't exist - don't overwrite!"""
         user = await self.get_user(user_id)
         if user:
             print(f"👤 User {user_id} already exists - SKIPPING")
@@ -86,20 +85,30 @@ class SupabaseDB:
             return False
     
     async def get_referral_link(self, user_id: int) -> str:
-        bot_username = os.getenv("BOT_USERNAME", "Cashyads2_bot")
-        return f"https://t.me/{bot_username}?start=ref_REF_{user_id}"
+        """FIXED: Use correct bot username from .env"""
+        bot_username = os.getenv("BOT_USERNAME", "Cashyads_bot")
+        referral_code = f"REF_{user_id}_{random.randint(1000, 9999)}"
+        return f"https://t.me/{bot_username}?start={referral_code}"
     
     async def process_referral(self, user_id: int, referrer_code: str):
+        """Process when new user joins via referral link"""
         try:
+            # Find referrer by code
             referrer = self.client.table("users").select("*").eq("referral_code", referrer_code).execute()
             if referrer.data and referrer.data[0]["user_id"] != user_id:
                 referrer_id = referrer.data[0]["user_id"]
+                
+                # Give 40 Rs bonus to referrer
                 await self.add_balance(referrer_id, 40.0)
+                
+                # Increment referral count
                 current_refs = int(referrer.data[0].get("referrals", 0))
                 self.client.table("users").update({"referrals": current_refs + 1}).eq("user_id", referrer_id).execute()
+                
+                print(f"✅ REFERRAL: {user_id} joined via {referrer_id} → +40 Rs")
                 return True
-        except:
-            pass
+        except Exception as e:
+            print(f"❌ Referral error: {e}")
         return False
     
     async def can_withdraw(self, user_id: int) -> dict:
