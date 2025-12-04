@@ -5,7 +5,6 @@ from utils.rewards import generate_reward
 import os
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command and show persistent keyboard"""
     keyboard = [
         [KeyboardButton("Watch Ads 💰")],
         [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
@@ -14,61 +13,45 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, persistent=True)
     
-    welcome_text = (
-        "🎉 Watch ads and earn money!\n"
-        "💰 Get paid for every ad you watch!"
-    )
-    
+    welcome_text = "🎉 Watch ads and earn money!\n💰 Get paid for every ad you watch!"
     await update.message.reply_text(welcome_text, reply_markup=reply_markup)
 
 async def watch_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle Watch Ads button - open Mini App"""
     MINI_APP_URL = os.getenv("MINI_APP_URL", "https://your-mini-app.pages.dev")
-    
     keyboard = [[KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=MINI_APP_URL))]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
     
     await update.message.reply_text(
-        "📺 Open the Mini App to watch an ad and earn money!\n"
-        "💰 Reward: 3.0 - 5.0 Rs",
+        "📺 Open the Mini App to watch an ad and earn money!\n💰 Reward: 3.0 - 5.0 Rs",
         reply_markup=reply_markup
     )
 
 async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle data sent from Mini App after ad completion"""
     user_id = update.effective_user.id
-    
-    # Verify it's an ad completion signal
     data = update.effective_message.web_app_data.data
+    
     if "ad_completed" in data:
         reward = generate_reward()
         await db.add_balance(user_id, reward)
         balance = await db.get_balance(user_id)
         
         await update.message.reply_text(
-            f"✅ Ad watched successfully!\n"
-            f"💰 You earned: {reward:.1f} Rs\n"
-            f"💳 New balance: {balance:.1f} Rs",
+            f"✅ Ad watched successfully!\n💰 You earned: {reward:.1f} Rs\n💳 New balance: {balance:.1f} Rs",
             reply_markup=get_main_keyboard()
         )
     else:
-        await update.message.reply_text(
-            "❌ Something went wrong. Try again!",
-            reply_markup=get_main_keyboard()
-        )
+        await update.message.reply_text("❌ Something went wrong. Try again!", reply_markup=get_main_keyboard())
 
 async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show current balance"""
     user_id = update.effective_user.id
     balance = await db.get_balance(user_id)
     await update.message.reply_text(
-        f"💳 Your current balance: {balance:.1f} Rs\n"
-        "👇 Watch more ads to earn!",
+        f"💳 Your current balance: {balance:.1f} Rs\n👇 Watch more ads to earn!",
         reply_markup=get_main_keyboard()
     )
 
 def get_main_keyboard():
-    """Return main persistent keyboard"""
+    from telegram import ReplyKeyboardMarkup, KeyboardButton
     keyboard = [
         [KeyboardButton("Watch Ads 💰")],
         [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
