@@ -1,4 +1,4 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 from telegram.ext import ContextTypes
 from utils.supabase import db
 from utils.rewards import generate_reward
@@ -6,67 +6,61 @@ import os
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [KeyboardButton("📺 Watch Ads 💰")],
-        [KeyboardButton("Balance 💳")]
+        [KeyboardButton("Watch Ads 💰")],
+        [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
+        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Extra ⚡")],
+        [KeyboardButton("Leaderboard 🏆")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
     
-    await update.message.reply_text(
-        "🎉 **CashyAds2** - Earn Instantly!\n\n"
-        "💰 **3-5 Rs per claim**\n"
-        "📱 Click → Claim Reward → Money Added!",
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
+    welcome_text = "🎉 Watch ads and earn money!\n💰 Get paid for every ad you watch!"
+    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
 
 async def watch_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     MINI_APP_URL = os.getenv("MINI_APP_URL")
-    
-    inline_keyboard = [[InlineKeyboardButton("📺 Claim Reward Now 💰", web_app=WebAppInfo(url=MINI_APP_URL))]]
-    inline_markup = InlineKeyboardMarkup(inline_keyboard)
+    keyboard = [[KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=MINI_APP_URL))]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
     
     await update.message.reply_text(
-        "🎁 **Instant Reward Available!**\n\n"
-        "👇 Click → Claim 3-5 Rs Instantly!",
-        reply_markup=inline_markup,
-        parse_mode='Markdown'
+        "📺 Open the Mini App to watch an ad and earn money!\n💰 Reward: 3.0 - 5.0 Rs",
+        reply_markup=reply_markup
     )
 
 async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ALWAYS GIVE REWARD ON CLAIM BUTTON CLICK"""
     user_id = update.effective_user.id
+    data = update.effective_message.web_app_data.data
     
-    print(f"🎁 CLAIM CLICKED by user {user_id}")
+    print(f"🌐 WEBDATA: {data}")  # DEBUG LOG
     
-    # ANY WebAppData = Reward! (No verification)
-    reward = generate_reward()
-    await db.add_balance(user_id, reward)
-    balance = await db.get_balance(user_id)
-    
-    print(f"💰 REWARD: User {user_id} +{reward} = {balance}")
-    
-    await update.message.reply_text(
-        f"🎉 **REWARD CLAIMED!**\n\n"
-        f"💰 **+{reward:.1f} Rs EARNED**\n"
-        f"💳 **NEW BALANCE: {balance:.1f} Rs**\n\n"
-        f"📺 Claim more rewards!",
-        reply_markup=get_main_keyboard(),
-        parse_mode='Markdown'
-    )
+    if "ad_completed" in data:
+        reward = generate_reward()
+        await db.add_balance(user_id, reward)
+        balance = await db.get_balance(user_id)
+        
+        print(f"💰 REWARD: +{reward} = {balance}")  # DEBUG LOG
+        
+        await update.message.reply_text(
+            f"✅ Ad watched successfully!\n💰 You earned: {reward:.1f} Rs\n💳 New balance: {balance:.1f} Rs",
+            reply_markup=get_main_keyboard()
+        )
+    else:
+        print(f"❌ NO REWARD: {data}")  # DEBUG LOG
+        await update.message.reply_text("❌ Something went wrong. Try again!", reply_markup=get_main_keyboard())
 
 async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     balance = await db.get_balance(user_id)
     await update.message.reply_text(
-        f"💳 **Your balance: {balance:.1f} Rs**\n\n"
-        "📺 Claim more rewards to earn!",
-        reply_markup=get_main_keyboard(),
-        parse_mode='Markdown'
+        f"💳 Your current balance: {balance:.1f} Rs\n👇 Watch more ads to earn!",
+        reply_markup=get_main_keyboard()
     )
 
 def get_main_keyboard():
+    from telegram import ReplyKeyboardMarkup, KeyboardButton
     keyboard = [
-        [KeyboardButton("📺 Watch Ads 💰")],
-        [KeyboardButton("Balance 💳")]
+        [KeyboardButton("Watch Ads 💰")],
+        [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
+        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Extra ⚡")],
+        [KeyboardButton("Leaderboard 🏆")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
