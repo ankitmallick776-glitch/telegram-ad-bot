@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import logging
 import os
+import asyncio
 from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from handlers.watch_ads_handler import (
@@ -17,15 +18,12 @@ if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN missing!")
 
 def main():
-    # Initialize DB BEFORE creating app
-    import asyncio
     from utils.supabase import db
     
     print("⏳ Initializing database...")
     asyncio.run(db.init_table())
     print("✅ Cashyads2 Ready!")
     
-    # Create app
     app = Application.builder().token(BOT_TOKEN).build()
     
     # Message handlers
@@ -40,7 +38,6 @@ def main():
     app.add_handler(CallbackQueryHandler(process_withdrawal, pattern="^withdraw_"))
     app.add_handler(CallbackQueryHandler(back_to_balance, pattern="^back_balance$"))
     
-    # Unknown handler
     async def unknown(update, context):
         await update.message.reply_text("👇 Use the buttons!", reply_markup=get_main_keyboard())
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
@@ -48,7 +45,7 @@ def main():
     print("🤖 Cashyads2 LIVE!")
     print("Press Ctrl+C to stop\n")
     
-    # Start polling - THIS manages its own loop
+    # NO AWAIT - run_polling() is NOT async!
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
@@ -56,5 +53,3 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         print("\n✅ Bot stopped cleanly")
-    except Exception as e:
-        print(f"❌ Error: {e}")
