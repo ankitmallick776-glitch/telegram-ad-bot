@@ -1,6 +1,6 @@
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 from telegram.ext import ContextTypes
-from utils.supabase import db  # Updated import
+from utils.supabase import db
 from utils.rewards import generate_reward
 import os
 
@@ -69,7 +69,6 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def get_main_keyboard():
     """Return main persistent keyboard"""
-    from telegram import ReplyKeyboardMarkup, KeyboardButton
     keyboard = [
         [KeyboardButton("Watch Ads 💰")],
         [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
