@@ -29,7 +29,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start with referral code - NOTIFY REFERRER, NOT NEW USER"""
+    """Handle /start with referral code - ONLY WORKS ONCE PER USER!"""
     user_id = update.effective_user.id
     username = update.effective_user.username or f"User_{user_id}"
     
@@ -43,6 +43,26 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         referrer_code = context.args[0]
         print(f"📌 Referral code: {referrer_code}")
         
+        # Check if already referred
+        already_referred = await db.user_already_referred(user_id)
+        if already_referred:
+            print(f"⚠️ User {user_id} already has a referrer! Blocking duplicate...")
+            keyboard = [
+                [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
+                [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
+                [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Leaderboard 🏆")]
+            ]
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+            await update.message.reply_text(
+                "🎉 **Welcome to Cashyads2!**\n\n"
+                "💰 **Watch ads → Earn 3-5 Rs each**\n"
+                "👥 **Refer → Earn 40 Rs + 5% commission**\n"
+                "🎁 **Daily bonus: 5 Rs (once/day)**",
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+            return
+        
         # Get referrer user_id from code
         referrer_info = await db.get_referrer_by_code(referrer_code)
         if referrer_info:
@@ -52,7 +72,7 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if await db.process_referral(user_id, referrer_code):
                 print(f"✅ Referral processed: {user_id} → {referrer_id}")
                 
-                # NOTIFY REFERRER - NOT NEW USER!
+                # NOTIFY REFERRER
                 try:
                     notification_text = (
                         f"🎉 Someone joined via your referral!\n\n"
@@ -73,7 +93,7 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             print(f"❌ Referrer not found for code: {referrer_code}")
     
-    # Show welcome to NEW USER (no special notification)
+    # Show welcome
     keyboard = [
         [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
         [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
