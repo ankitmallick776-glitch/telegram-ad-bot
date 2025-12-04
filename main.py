@@ -2,9 +2,10 @@ import asyncio
 import logging
 import os
 from dotenv import load_dotenv
+from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from handlers.watch_ads_handler import (
-    start, web_app_data, balance, bonus, refer, 
+    start, start_referral, web_app_data, balance, bonus, refer, 
     withdraw_menu, process_withdrawal, back_to_balance, get_main_keyboard
 )
 
@@ -23,8 +24,10 @@ async def main():
     
     app = Application.builder().token(BOT_TOKEN).build()
     
+    # ⚠️ CRITICAL: REFERRAL HANDLER FIRST (with context.args check)
+    app.add_handler(CommandHandler("start", start_referral, filters.Regex(".*"), has_args=True))
+    
     # Message handlers
-    app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
     app.add_handler(MessageHandler(filters.Regex("^(Bonus 🎁)$"), bonus))
     app.add_handler(MessageHandler(filters.Regex("^(Refer and Earn 👥)$"), refer))
@@ -35,11 +38,14 @@ async def main():
     app.add_handler(CallbackQueryHandler(process_withdrawal, pattern="^withdraw_"))
     app.add_handler(CallbackQueryHandler(back_to_balance, pattern="^back_balance$"))
     
+    # Generic /start (no args) - LAST
+    app.add_handler(CommandHandler("start", start))
+    
     async def unknown(update, context):
         await update.message.reply_text("👇 Use the buttons!", reply_markup=get_main_keyboard())
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
     
-    print("🤖 Cashyads2 LIVE!")
+    print("🤖 Cashyads2 WITH REFERRALS LIVE!")
     await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
