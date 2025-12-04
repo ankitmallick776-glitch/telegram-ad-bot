@@ -1,7 +1,8 @@
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 from telegram.ext import ContextTypes
-from utils.db import get_balance, add_balance
+from utils.supabase import db  # Updated import
 from utils.rewards import generate_reward
+import os
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command and show persistent keyboard"""
@@ -22,8 +23,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def watch_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle Watch Ads button - open Mini App"""
-    # Replace with your Cloudflare Pages URL after deployment
-    MINI_APP_URL = "https://your-mini-app.pages.dev"  # UPDATE THIS
+    MINI_APP_URL = os.getenv("MINI_APP_URL", "https://your-mini-app.pages.dev")
     
     keyboard = [[KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=MINI_APP_URL))]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
@@ -42,8 +42,8 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = update.effective_message.web_app_data.data
     if "ad_completed" in data:
         reward = generate_reward()
-        await add_balance(user_id, reward)
-        balance = await get_balance(user_id)
+        await db.add_balance(user_id, reward)
+        balance = await db.get_balance(user_id)
         
         await update.message.reply_text(
             f"✅ Ad watched successfully!\n"
@@ -56,6 +56,16 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Something went wrong. Try again!",
             reply_markup=get_main_keyboard()
         )
+
+async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show current balance"""
+    user_id = update.effective_user.id
+    balance = await db.get_balance(user_id)
+    await update.message.reply_text(
+        f"💳 Your current balance: {balance:.1f} Rs\n"
+        "👇 Watch more ads to earn!",
+        reply_markup=get_main_keyboard()
+    )
 
 def get_main_keyboard():
     """Return main persistent keyboard"""
