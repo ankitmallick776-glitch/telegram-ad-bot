@@ -15,106 +15,106 @@ class SupabaseDB:
         )
     
     async def init_table(self):
+        """Create users table if not exists"""
         try:
-            self.client.table("users").select("*").limit(0).execute()
-            print("✅ Users table ready")
+            response = self.client.table('users').select('*').limit(0).execute()
         except:
-            print("⚠️ Table ready")
-    
-    async def get_user(self, user_id: int):
-        try:
-            response = self.client.table("users").select("*").eq("user_id", user_id).execute()
-            return response.data[0] if response.data else None
-        except:
-            return None
-    
-    async def create_user_if_not_exists(self, user_id: int, username: str = ""):
-        """FIXED: Only create if user doesn't exist!"""
-        user = await self.get_user(user_id)
-        if user:
-            print(f"👤 User {user_id} already exists - SKIPPING")
-            return  # Don't overwrite!
+            # Create table
+            self.client.rpc('create_users_table').execute()
         
-        user_data = {
-            "user_id": user_id,
-            "balance": 0.0,
-            "referrals": 0
+        # Ensure required columns
+        columns = """
+        ALTER TABLE users 
+        ADD COLUMN IF NOT EXISTS balance DECIMAL(10,2) DEFAULT 0.00,
+        ADD COLUMN IF NOT EXISTS referrals INTEGER DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS referral_code TEXT UNIQUE,
+        ADD COLUMN IF NOT EXISTS referrer_id BIGINT,
+        ADD COLUMN IF NOT EXISTS daily_bonus_date TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS total_withdrawn DECIMAL(10,2) DEFAULT 0.00;
+        """
+        self.client.rpc('execute_sql', {'sql': columns}).execute()
+        
+        logger.info("✅ Database initialized")
+    
+    async def get_user(self, user_id):
+        """Get user or None"""
+        response = self.client.table('users').select('*').eq('user_id', user_id).execute()
+        return response.data[0] if response.data else None
+    
+    async def create_user(self, user_id, username):
+        """Create new user with unique referral code"""
+        ref_code = f"REF{random.randint(10000, 99999)}"
+        
+        data = {
+            'user_id': user_id,
+            'username': username,
+            'balance': 0.0,
+            'referrals': 0,
+            'referral_code': ref_code,
+            'daily_bonus_date': None
         }
         
-        if username:
-            user_data["username"] = username
-            
-        referral_code = f"REF_{user_id}_{random.randint(1000,9999)}"
-        user_data["referral_code"] = referral_code
-        
-        try:
-            self.client.table("users").insert(user_data).execute()
-            print(f"👤 CREATED new user {user_id}")
-        except Exception as e:
-            print(f"⚠️ Create error: {e}")
+        self.client.table('users').insert(data).execute()
     
-    async def get_balance(self, user_id: int) -> float:
+    async def add_balance(self, user_id, amount):
+        """Add balance and return new balance"""
+        response = self.client.table('users').select('balance').eq('user_id', user_id).execute()
+        if response.data:
+            new_balance = response.data[0]['balance'] + amount
+            self.client.table('users').update({'balance': new_balance}).eq('user_id', user_id).execute()
+            return new_balance
+        return 0.0
+    
+    async def process_referral(self, user_id, ref_code):
+        """Process referral - 40rs + link referrer"""
+        referrer = self.client.table('users').select('user_id').eq('referral_code', ref_code).execute()
+        if referrer.data:
+            referrer_id = referrer.data[0]['user_id']
+            
+            # Add 40rs to new user
+            await self.add_balance(user_id, 40.0)
+            
+            # Increment referrer count
+            self.client.table('users').update({'referrals': 1}).eq('user_id', referrer_id).execute()
+            
+            # Link referrer
+            self.client.table('users').update({'referrer_id': referrer_id}).eq('user_id', user_id).execute()
+    
+    async def claim_daily_bonus(self, user_id):
+        """Claim 5rs daily bonus"""
         user = await self.get_user(user_id)
-        return float(user["balance"]) if user and "balance" in user else 0.0
-    
-    async def add_balance(self, user_id: int, amount: float) -> None:
-        current = await self.get_balance(user_id)
-        new_balance = current + amount
+        today = date.today()
         
-        try:
-            self.client.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
-            print(f"💰 User {user_id}: +{amount} = {new_balance}")
-        except Exception as e:
-            print(f"❌ Balance error: {e}")
-    
-    async def give_daily_bonus(self, user_id: int) -> bool:
-        try:
-            user = await self.get_user(user_id)
-            if not user:
-                return False
-            
-            today = date.today().isoformat()
-            last_bonus = user.get("daily_bonus_date", "")
-            
-            if last_bonus and last_bonus[:10] == today:
-                return False
-            
+        if user['daily_bonus_date'] != today.isoformat():
             await self.add_balance(user_id, 5.0)
-            self.client.table("users").update({"daily_bonus_date": today}).eq("user_id", user_id).execute()
+            self.client.table('users').update({'daily_bonus_date': today.isoformat()}).eq('user_id', user_id).execute()
             return True
-        except:
-            return False
-    
-    async def get_referral_link(self, user_id: int) -> str:
-        bot_username = os.getenv("BOT_USERNAME", "Cashyads2_bot")
-        return f"https://t.me/{bot_username}?start=ref_REF_{user_id}"
-    
-    async def process_referral(self, user_id: int, referrer_code: str):
-        try:
-            referrer = self.client.table("users").select("*").eq("referral_code", referrer_code).execute()
-            if referrer.data and referrer.data[0]["user_id"] != user_id:
-                referrer_id = referrer.data[0]["user_id"]
-                await self.add_balance(referrer_id, 40.0)
-                current_refs = int(referrer.data[0].get("referrals", 0))
-                self.client.table("users").update({"referrals": current_refs + 1}).eq("user_id", referrer_id).execute()
-                return True
-        except:
-            pass
         return False
     
-    async def can_withdraw(self, user_id: int) -> dict:
+    async def process_withdrawal(self, user_id, method):
+        """Process withdrawal - set balance to 0"""
+        self.client.table('users').update({'balance': 0.0}).eq('user_id', user_id).execute()
+    
+    async def notify_admin(self, user_id, method, amount):
+        """Notify admin of withdrawal"""
+        admin_id = 123456789  # YOUR TELEGRAM ID
         user = await self.get_user(user_id)
-        if not user:
-            return {"can": False, "reason": "User not found"}
         
-        balance = float(user.get("balance", 0))
-        referrals = int(user.get("referrals", 0))
+        message = f"💸 **WITHDRAWAL REQUEST**\n\n"
+        message += f"👤 User: {user['username']} (ID: {user_id})\n"
+        message += f"💰 Amount: ₹{amount}\n"
+        message += f"📱 Method: {method}"
         
-        if balance < 380:
-            return {"can": False, "reason": f"Min 380 Rs. Current: {balance:.1f}"}
-        if referrals < 12:
-            return {"can": False, "reason": f"Min 12 referrals. Current: {referrals}"}
-        
-        return {"can": True, "balance": balance, "referrals": referrals}
+        # Send to admin bot (implement as needed)
+        print(message)  # Replace with actual admin notification
+    
+    async def get_leaderboard(self, limit: int = 5):
+        """Get top users by balance"""
+        try:
+            response = self.client.table('users').select('user_id, username, balance').order('balance', desc=True).limit(limit).execute()
+            return response.data
+        except Exception as e:
+            print(f"Leaderboard error: {e}")
+            return []
 
 db = SupabaseDB()
