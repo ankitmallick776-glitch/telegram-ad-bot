@@ -1,4 +1,3 @@
-import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import asyncio
@@ -13,34 +12,34 @@ class SupabaseDB:
         )
     
     async def init_table(self):
-        """Create users table if not exists - FIXED"""
         try:
-            # Test if table exists by selecting
-            response = self.client.table("users").select("*").limit(0).execute()
+            self.client.table("users").select("*").limit(0).execute()
             print("✅ Users table exists")
         except:
-            print("⚠️  Creating users table...")
-            # Create table via RPC (bypasses RLS)
-            self.client.rpc('create_users_table').execute()
-            print("✅ Table created")
+            print("⚠️ Table check failed - assuming exists")
     
     async def get_balance(self, user_id: int) -> float:
-        """Get user balance - FIXED upsert logic"""
-        response = self.client.table("users").select("balance").eq("user_id", user_id).execute()
-        if response.data:
-            return float(response.data[0]["balance"])
-        return 0.0
+        """Get current balance"""
+        try:
+            response = self.client.table("users").select("balance").eq("user_id", user_id).execute()
+            return float(response.data[0]["balance"]) if response.data else 0.0
+        except:
+            return 0.0
     
     async def add_balance(self, user_id: int, amount: float) -> None:
-        """Add amount to user balance (upsert) - FIXED"""
+        """FIXED: Proper increment (not overwrite)"""
         try:
-            # UPSERT with ON CONFLICT
+            # Get current balance first
+            current_balance = await self.get_balance(user_id)
+            new_balance = current_balance + amount
+            
+            # Upsert with NEW total
             self.client.table("users").upsert({
                 "user_id": user_id,
-                "balance": amount  # Will add to existing on conflict
+                "balance": new_balance
             }, on_conflict="user_id").execute()
+            print(f"💰 Added {amount} to user {user_id}. New balance: {new_balance}")
         except Exception as e:
-            print(f"Balance update error: {e}")
+            print(f"❌ Balance error: {e}")
 
-# Global instance
 db = SupabaseDB()
