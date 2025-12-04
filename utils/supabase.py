@@ -28,6 +28,14 @@ class SupabaseDB:
         except:
             return None
     
+    async def get_referrer_by_code(self, referral_code: str):
+        """Get referrer info by referral code"""
+        try:
+            response = self.client.table("users").select("*").eq("referral_code", referral_code).execute()
+            return response.data[0] if response.data else None
+        except:
+            return None
+    
     async def create_user_if_not_exists(self, user_id: int, username: str = ""):
         user = await self.get_user(user_id)
         if user:
@@ -48,7 +56,7 @@ class SupabaseDB:
         
         try:
             self.client.table("users").insert(user_data).execute()
-            print(f"👤 CREATED new user {user_id}")
+            print(f"👤 CREATED new user {user_id} with code {referral_code}")
         except Exception as e:
             print(f"⚠️ Create error: {e}")
     
@@ -84,25 +92,18 @@ class SupabaseDB:
         except:
             return False
     
-    async def get_referral_link(self, user_id: int) -> str:
-        """FIXED: Use correct bot username from .env"""
-        bot_username = os.getenv("BOT_USERNAME", "Cashyads_bot")
-        referral_code = f"REF_{user_id}_{random.randint(1000, 9999)}"
-        return f"https://t.me/{bot_username}?start={referral_code}"
-    
     async def process_referral(self, user_id: int, referrer_code: str):
         """Process when new user joins via referral link"""
         try:
-            # Find referrer by code
-            referrer = self.client.table("users").select("*").eq("referral_code", referrer_code).execute()
-            if referrer.data and referrer.data[0]["user_id"] != user_id:
-                referrer_id = referrer.data[0]["user_id"]
+            referrer = await self.get_referrer_by_code(referrer_code)
+            if referrer and referrer["user_id"] != user_id:
+                referrer_id = referrer["user_id"]
                 
                 # Give 40 Rs bonus to referrer
                 await self.add_balance(referrer_id, 40.0)
                 
                 # Increment referral count
-                current_refs = int(referrer.data[0].get("referrals", 0))
+                current_refs = int(referrer.get("referrals", 0))
                 self.client.table("users").update({"referrals": current_refs + 1}).eq("user_id", referrer_id).execute()
                 
                 print(f"✅ REFERRAL: {user_id} joined via {referrer_id} → +40 Rs")
