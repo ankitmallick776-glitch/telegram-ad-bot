@@ -1,4 +1,4 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 from telegram.ext import ContextTypes
 from utils.supabase import db
 from utils.rewards import generate_reward
@@ -6,9 +6,10 @@ import os
 import random
 
 BOT_USERNAME = "@CashyAds_bot"
+MINI_APP_URL = os.getenv("MINI_APP_URL", "https://your-mini-app.pages.dev")
 
 MAIN_KEYBOARD = ReplyKeyboardMarkup([
-    [KeyboardButton("Watch Ads 💰")],
+    [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=MINI_APP_URL))],
     [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
     [KeyboardButton("Refer 👥"), KeyboardButton("Leaderboard 🏆")],
     [KeyboardButton("Withdraw 💸")]
@@ -133,6 +134,5 @@ async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(query.message, context)
 
 async def leaderboard_btn(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Leaderboard button handler"""
     from handlers.leaderboard_handler import leaderboard
     await leaderboard(update, context)
