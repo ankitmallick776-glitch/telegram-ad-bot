@@ -21,9 +21,11 @@ if not BOT_TOKEN:
 
 async def main():
     """Start the bot"""
+    # Initialize Supabase
     await db.init_table()
     print("✅ Supabase connected and table ready!")
     
+    # Create application
     application = Application.builder().token(BOT_TOKEN).build()
     
     # Handlers
@@ -32,13 +34,31 @@ async def main():
     application.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
     application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
     
-    # Handle other buttons
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, lambda u, c: u.message.reply_text(
-        "👇 Use the buttons below!", reply_markup=get_main_keyboard()
-    )))
+    # Handle other buttons - FIXED LAMBDA
+    async def handle_unknown(update, context):
+        await update.message.reply_text(
+            "👇 Use the buttons below!", 
+            reply_markup=get_main_keyboard()
+        )
+    
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unknown))
     
     print("🤖 Bot started! Press Ctrl+C to stop.")
-    await application.run_polling(allowed_updates=["message", "web_app_data"])
+    
+    # FIXED: Use proper polling method
+    await application.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True
+    )
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        # FIXED: Use nest_asyncio for VPS environments
+        import nest_asyncio
+        nest_asyncio.apply()
+        
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n👋 Bot stopped by user")
+    except Exception as e:
+        print(f"❌ Error: {e}")
