@@ -11,24 +11,26 @@ logging.basicConfig(level=logging.INFO)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN not found!")
+    raise ValueError("BOT_TOKEN missing!")
 
 async def main():
     from utils.supabase import db
     await db.init_table()
+    print("✅ Cashyads2 Ready!")
     
     app = Application.builder().token(BOT_TOKEN).build()
     
+    # CRITICAL: WebAppData handler BEFORE text handlers
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.Regex("^(📺 Watch Ads 💰)$"), watch_ads))
-    app.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
+    app.add_handler(MessageHandler(filters.Regex("^(Watch Ads 💰)$"), watch_ads))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
+    app.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
     
     async def unknown(update, context):
         await update.message.reply_text("👇 Use buttons!", reply_markup=get_main_keyboard())
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
     
-    print("🤖 Bot + WebApp ready!")
+    print("🤖 Cashyads2 Live!")
     await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
