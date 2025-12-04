@@ -11,10 +11,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await db.create_user_if_not_exists(user_id, username)
     
+    # Process referral code from start parameter
     args = context.args
-    if args and args[0].startswith("ref_"):
-        referrer_code = args[0][4:]
-        await db.process_referral(user_id, referrer_code)
+    if args and args[0].startswith("REF_"):
+        referrer_code = args[0]
+        if await db.process_referral(user_id, referrer_code):
+            await update.message.reply_text(
+                "🎉 **Welcome via referral!**\n\n"
+                "Your referrer earned 40 Rs!\n"
+                "Start earning now! 💰"
+            )
     
     keyboard = [
         [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
@@ -86,17 +92,27 @@ async def bonus(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    link = await db.get_referral_link(user_id)
+    user = await db.get_user(user_id)
     
-    keyboard = [[InlineKeyboardButton("📤 Share Link", url=f"https://t.me/share/url?url={link}&text=Join%20Cashyads2%20%F0%9F%92%B0")]]
+    if not user:
+        await update.message.reply_text("❌ User not found!", reply_markup=get_main_keyboard())
+        return
+    
+    referral_code = user.get("referral_code", "")
+    bot_username = os.getenv("BOT_USERNAME", "Cashyads_bot")
+    link = f"https://t.me/{bot_username}?start={referral_code}"
+    referrals = int(user.get("referrals", 0))
+    
+    keyboard = [[InlineKeyboardButton("📤 Share Link", url=f"https://t.me/share/url?url={link}&text=Join%20Cashyads2%20%F0%9F%92%B0%20Earn%20money%20watching%20ads!")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
         f"👥 **Your Referral Link:**\n\n"
         f"`{link}`\n\n"
+        f"👫 **Referrals: {referrals}**\n\n"
         f"💰 **Earnings:**\n"
         f"• 40 Rs per referral\n"
-        f"• 5% commission on their earnings\n\n"
+        f"• 5% commission on their ad earnings\n\n"
         f"📱 Click to share!",
         reply_markup=reply_markup,
         parse_mode='Markdown'
