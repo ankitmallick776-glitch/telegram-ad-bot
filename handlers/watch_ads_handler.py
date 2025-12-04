@@ -9,12 +9,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or "User"
     
+    # FIXED: Use create_user_if_not_exists (won't overwrite!)
+    await db.create_user_if_not_exists(user_id, username)
+    
     args = context.args
     if args and args[0].startswith("ref_"):
         referrer_code = args[0][4:]
         await db.process_referral(user_id, referrer_code)
-    
-    await db.create_user(user_id, username)
     
     keyboard = [
         [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
