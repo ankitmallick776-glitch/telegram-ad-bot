@@ -20,14 +20,14 @@ async def main():
     
     app = Application.builder().token(BOT_TOKEN).build()
     
-    # CRITICAL: WebAppData handler BEFORE text handlers
+    # PERFECT HANDLER ORDER
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.Regex("^(Watch Ads 💰)$"), watch_ads))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
     app.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
     
     async def unknown(update, context):
-        await update.message.reply_text("👇 Use buttons!", reply_markup=get_main_keyboard())
+        await update.message.reply_text("👇 Use the keyboard buttons!", reply_markup=get_main_keyboard())
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
     
     print("🤖 Cashyads2 Live!")
