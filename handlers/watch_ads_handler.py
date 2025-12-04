@@ -11,7 +11,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Extra ⚡")],
         [KeyboardButton("Leaderboard 🏆")]
     ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, persistent=True)
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
     
     welcome_text = "🎉 Watch ads and earn money!\n💰 Get paid for every ad you watch!"
     await update.message.reply_text(welcome_text, reply_markup=reply_markup)
@@ -58,4 +58,4 @@ def get_main_keyboard():
         [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Extra ⚡")],
         [KeyboardButton("Leaderboard 🏆")]
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, persistent=True)
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
