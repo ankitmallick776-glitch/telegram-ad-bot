@@ -53,7 +53,6 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print(f"✅ Referral processed: {user_id} → {referrer_id}")
                 
                 # NOTIFY REFERRER - NOT NEW USER!
-                # FIXED: Escape @ symbol and use plain text format
                 try:
                     notification_text = (
                         f"🎉 Someone joined via your referral!\n\n"
@@ -64,7 +63,7 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.send_message(
                         referrer_id,
                         notification_text,
-                        parse_mode=None  # NO MARKDOWN - plain text only
+                        parse_mode=None
                     )
                     print(f"📬 Notification sent to referrer {referrer_id}")
                 except Exception as e:
@@ -103,6 +102,9 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         balance = await db.get_balance(user_id)
         
         print(f"💰 REWARD: +{reward} = {balance}")
+        
+        # ADD 5% COMMISSION TO REFERRER!
+        await db.add_commission(user_id, reward)
         
         await update.message.reply_text(
             f"✅ **Ad watched successfully!**\n"
