@@ -39,13 +39,20 @@ class SupabaseDB:
     async def get_referrer_id_by_new_user(self, user_id: int):
         """Get who referred this user (inverse lookup)"""
         try:
-            # Find the referral code that was used when this user joined
             response = self.client.table("referral_history").select("referrer_id").eq("new_user_id", user_id).execute()
             if response.data:
                 return response.data[0]["referrer_id"]
         except:
             pass
         return None
+    
+    async def user_already_referred(self, user_id: int) -> bool:
+        """Check if user was ALREADY referred by someone"""
+        try:
+            response = self.client.table("referral_history").select("id").eq("new_user_id", user_id).execute()
+            return len(response.data) > 0
+        except:
+            return False
     
     async def create_user_if_not_exists(self, user_id: int, username: str = ""):
         user = await self.get_user(user_id)
@@ -88,7 +95,6 @@ class SupabaseDB:
     async def add_commission(self, new_user_id: int, reward: float) -> None:
         """Add 5% commission to referrer when referred user earns"""
         try:
-            # Find who referred this user
             referrer_id = await self.get_referrer_id_by_new_user(new_user_id)
             if referrer_id:
                 commission = reward * 0.05
@@ -116,7 +122,13 @@ class SupabaseDB:
             return False
     
     async def process_referral(self, user_id: int, referrer_code: str):
-        """Process when new user joins via referral link"""
+        """Process when new user joins via referral link - ONLY ONCE PER USER!"""
+        
+        # CRITICAL: Check if user was ALREADY referred before!
+        if await self.user_already_referred(user_id):
+            print(f"❌ EXPLOIT BLOCKED: User {user_id} already has a referrer! Ignoring...")
+            return False
+        
         try:
             referrer = await self.get_referrer_by_code(referrer_code)
             if referrer and referrer["user_id"] != user_id:
@@ -138,8 +150,8 @@ class SupabaseDB:
                         "created_at": date.today().isoformat()
                     }).execute()
                     print(f"📊 Referral history stored: {user_id} → {referrer_id}")
-                except:
-                    pass
+                except Exception as e:
+                    print(f"⚠️ History error: {e}")
                 
                 print(f"✅ REFERRAL: {user_id} joined via {referrer_id} → +40 Rs")
                 return True
