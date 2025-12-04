@@ -36,6 +36,17 @@ class SupabaseDB:
         except:
             return None
     
+    async def get_referrer_id_by_new_user(self, user_id: int):
+        """Get who referred this user (inverse lookup)"""
+        try:
+            # Find the referral code that was used when this user joined
+            response = self.client.table("referral_history").select("referrer_id").eq("new_user_id", user_id).execute()
+            if response.data:
+                return response.data[0]["referrer_id"]
+        except:
+            pass
+        return None
+    
     async def create_user_if_not_exists(self, user_id: int, username: str = ""):
         user = await self.get_user(user_id)
         if user:
@@ -74,6 +85,18 @@ class SupabaseDB:
         except Exception as e:
             print(f"❌ Balance error: {e}")
     
+    async def add_commission(self, new_user_id: int, reward: float) -> None:
+        """Add 5% commission to referrer when referred user earns"""
+        try:
+            # Find who referred this user
+            referrer_id = await self.get_referrer_id_by_new_user(new_user_id)
+            if referrer_id:
+                commission = reward * 0.05
+                await self.add_balance(referrer_id, commission)
+                print(f"🤝 COMMISSION: {new_user_id} earned {reward} → {referrer_id} gets 5% = {commission:.2f} Rs")
+        except Exception as e:
+            print(f"⚠️ Commission error: {e}")
+    
     async def give_daily_bonus(self, user_id: int) -> bool:
         try:
             user = await self.get_user(user_id)
@@ -105,6 +128,18 @@ class SupabaseDB:
                 # Increment referral count
                 current_refs = int(referrer.get("referrals", 0))
                 self.client.table("users").update({"referrals": current_refs + 1}).eq("user_id", referrer_id).execute()
+                
+                # STORE REFERRAL HISTORY for commission tracking
+                try:
+                    self.client.table("referral_history").insert({
+                        "new_user_id": user_id,
+                        "referrer_id": referrer_id,
+                        "referral_code": referrer_code,
+                        "created_at": date.today().isoformat()
+                    }).execute()
+                    print(f"📊 Referral history stored: {user_id} → {referrer_id}")
+                except:
+                    pass
                 
                 print(f"✅ REFERRAL: {user_id} joined via {referrer_id} → +40 Rs")
                 return True
