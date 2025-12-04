@@ -1,6 +1,5 @@
 from supabase import create_client, Client
 from dotenv import load_dotenv
-import asyncio
 
 load_dotenv()
 
@@ -37,7 +36,7 @@ class SupabaseDB:
             self.client.table("users").upsert({
                 "user_id": user_id,
                 "balance": new_balance
-            }, on_conflict="user_id").execute()
+            }).execute()
             print(f"💰 Added {amount} to user {user_id}. New balance: {new_balance}")
         except Exception as e:
             print(f"❌ Balance error: {e}")
