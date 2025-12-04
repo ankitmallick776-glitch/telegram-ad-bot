@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import asyncio
 import logging
 import os
 from dotenv import load_dotenv
@@ -17,21 +16,26 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN missing!")
 
-async def main():
+def main():
+    """Main function - NOT ASYNC"""
+    import asyncio
     from utils.supabase import db
-    await db.init_table()
+    
+    # Initialize DB (one-time, sync way)
+    print("⏳ Initializing database...")
+    asyncio.run(db.init_table())
     print("✅ Cashyads2 Ready!")
     
+    # Create application
     app = Application.builder().token(BOT_TOKEN).build()
     
-    # Message handlers
+    # Add all handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
     app.add_handler(MessageHandler(filters.Regex("^(Bonus 🎁)$"), bonus))
     app.add_handler(MessageHandler(filters.Regex("^(Refer and Earn 👥)$"), refer))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
     
-    # Callback handlers
     app.add_handler(CallbackQueryHandler(withdraw_menu, pattern="^withdraw$"))
     app.add_handler(CallbackQueryHandler(process_withdrawal, pattern="^withdraw_"))
     app.add_handler(CallbackQueryHandler(back_to_balance, pattern="^back_balance$"))
@@ -43,10 +47,11 @@ async def main():
     print("🤖 Cashyads2 LIVE!")
     print("Press Ctrl+C to stop\n")
     
-    await app.run_polling(drop_pending_updates=True)
+    # RUN POLLING - NOT ASYNC, NO AWAIT
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        main()
     except KeyboardInterrupt:
         print("\n✅ Bot stopped cleanly")
