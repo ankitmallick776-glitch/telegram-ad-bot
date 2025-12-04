@@ -1,198 +1,157 @@
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 from telegram.ext import ContextTypes
 from utils.supabase import db
 from utils.rewards import generate_reward
 import os
-from datetime import date
+
+BOT_USERNAME = "@CashyAds_bot"
+MINI_APP_URL = os.getenv("MINI_APP_URL", "https://your-mini-app.pages.dev")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or "User"
     
-    # FIXED: Use create_user_if_not_exists (won't overwrite!)
-    await db.create_user_if_not_exists(user_id, username)
+    # Check/create user
+    user = await db.get_user(user_id)
+    if not user:
+        await db.create_user(user_id, username)
+        user = await db.get_user(user_id)
     
+    # Referral check
     args = context.args
-    if args and args[0].startswith("ref_"):
-        referrer_code = args[0][4:]
+    if args and len(args) > 0 and args[0].startswith('ref_'):
+        referrer_code = args[0][4:]  # ref_REF123 → REF123
         await db.process_referral(user_id, referrer_code)
+        await update.message.reply_text("✅ Referral bonus credited! +₹40 + 5% commission activated!")
     
+    # MAIN KEYBOARD with Leaderboard
     keyboard = [
-        [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
+        [KeyboardButton("Watch Ads 💰")],
         [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
-        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Leaderboard 🏆")]
+        [KeyboardButton("Refer 👥"), KeyboardButton("Leaderboard 🏆")],
+        [KeyboardButton("Withdraw 💸")]
     ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
     await update.message.reply_text(
-        "🎉 **Welcome to Cashyads2!**\n\n"
-        "💰 **Watch ads → Earn 3-5 Rs each**\n"
-        "👥 **Refer → Earn 40 Rs + 5% commission**\n"
-        "🎁 **Daily bonus: 5 Rs (once/day)**",
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
+        f"🤖 **Welcome {username}!**\n\n"
+        "💰 Watch ads → Earn ₹3-5\n"
+        "👥 Refer friends → ₹40 + 5% lifetime\n"
+        "🎁 Daily bonus → ₹5\n\n"
+        f"💳 **Current: ₹{user['balance']:.1f}**",
+        reply_markup=reply_markup, parse_mode='Markdown'
     )
+
+async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = await db.get_user(user_id)
+    
+    keyboard = get_main_keyboard()
+    text = f"💳 **Your Balance: ₹{user['balance']:.1f}**\n\n"
+    text += f"👥 Referrals: {user.get('referrals', 0) or 0}\n"
+    text += f"**Withdraw min:** ₹380 + 12 referrals"
+    
+    await update.message.reply_text(text, reply_markup=keyboard, parse_mode='Markdown')
+
+async def bonus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    success = await db.claim_daily_bonus(user_id)
+    
+    if success:
+        await update.message.reply_text("🎁 **+₹5 Daily Bonus Claimed!**\nCome back tomorrow!")
+    else:
+        await update.message.reply_text("🎁 Daily bonus already claimed today!")
+
+async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = await db.get_user(user_id)
+    ref_code = user['referral_code']
+    
+    ref_link = f"https://t.me/{BOT_USERNAME}?start=ref_{ref_code}"
+    
+    message = f"👥 **YOUR REFERRAL LINK**\n\n"
+    message += f"`{ref_link}`\n\n"
+    message += f"💰 **EARNINGS:**\n"
+    message += f"• ₹40 per referral\n"
+    message += f"• 5% commission on their ads FOREVER\n"
+    message += f"• **Your referrals: {user.get('referrals', 0) or 0}**\n\n"
+    message += f"**Withdraw min:** ₹380 + 12 referrals"
+    
+    await update.message.reply_text(message, parse_mode='Markdown')
 
 async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     data = update.effective_message.web_app_data.data
     
-    print(f"🌐 WEBDATA: {data}")
+    reward = generate_reward()
+    await db.add_balance(user_id, reward)
     
-    if "ad_completed" in data:
-        reward = generate_reward()
-        await db.add_balance(user_id, reward)
-        balance = await db.get_balance(user_id)
-        
-        print(f"💰 REWARD: +{reward} = {balance}")
-        
-        await update.message.reply_text(
-            f"✅ **Ad watched successfully!**\n"
-            f"💰 **You earned: +{reward:.1f} Rs**\n"
-            f"💳 **New balance: {balance:.1f} Rs**",
-            reply_markup=get_main_keyboard(),
-            parse_mode='Markdown'
-        )
-    else:
-        await update.message.reply_text(
-            "❌ **Ad cancelled!**\n👇 Try again:",
-            reply_markup=get_main_keyboard()
-        )
-
-async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    balance = await db.get_balance(user_id)
-    
-    keyboard = [[InlineKeyboardButton("💰 Withdraw", callback_data="withdraw")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    # Commission to referrer
+    user = await db.get_user(user_id)
+    if user.get('referrer_id'):
+        comm = reward * 0.05
+        await db.add_balance(user['referrer_id'], comm)
     
     await update.message.reply_text(
-        f"💳 **Your balance: {balance:.1f} Rs**\n\n👇 Ready to withdraw?",
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
+        f"✅ **Ad watched successfully!**\n"
+        f"💰 **+₹{reward:.1f}** added to balance!\n\n"
+        "🔄 Watch more ads?"
     )
 
-async def bonus(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if await db.give_daily_bonus(user_id):
-        await update.message.reply_text(
-            "🎉 **Daily Bonus Claimed!**\n💰 **+5 Rs added!**\n👇 Check balance!",
-            reply_markup=get_main_keyboard()
-        )
-    else:
-        await update.message.reply_text(
-            "❌ **Already claimed today!**\n⏳ Try tomorrow!",
-            reply_markup=get_main_keyboard()
-        )
-
-async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    link = await db.get_referral_link(user_id)
-    
-    keyboard = [[InlineKeyboardButton("📤 Share Link", url=f"https://t.me/share/url?url={link}&text=Join%20Cashyads2%20%F0%9F%92%B0")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
-        f"👥 **Your Referral Link:**\n\n"
-        f"`{link}`\n\n"
-        f"💰 **Earnings:**\n"
-        f"• 40 Rs per referral\n"
-        f"• 5% commission on their earnings\n\n"
-        f"📱 Click to share!",
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
+def get_main_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("💳 Balance", callback_data="balance")],
+        [InlineKeyboardButton("💸 Withdraw", callback_data="withdraw")],
+        [InlineKeyboardButton("🔙 Back", callback_data="back_balance")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 async def withdraw_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
     user_id = query.from_user.id
-    check = await db.can_withdraw(user_id)
+    user = await db.get_user(user_id)
     
-    if check["can"]:
-        keyboard = [
-            [InlineKeyboardButton("💳 Paytm", callback_data="withdraw_paytm")],
-            [InlineKeyboardButton("💸 UPI", callback_data="withdraw_upi")],
-            [InlineKeyboardButton("🏦 Bank Transfer", callback_data="withdraw_bank")],
-            [InlineKeyboardButton("💵 Paypal", callback_data="withdraw_paypal")],
-            [InlineKeyboardButton("₿ USDT TRC20", callback_data="withdraw_usdt")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
+    if user['balance'] < 380 or user.get('referrals', 0) < 12:
         await query.edit_message_text(
-            f"💳 **Withdraw {check['balance']:.1f} Rs**\n\n"
-            f"✅ Minimum met ✓\n"
-            f"👥 Referrals: {check['referrals']}\n\n"
-            f"💰 **Choose method:**",
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
+            "❌ **Withdraw Failed**\n\n"
+            "💰 Min balance: ₹380\n"
+            "👥 Min referrals: 12\n\n"
+            f"**Current:** ₹{user['balance']:.1f} | {user.get('referrals', 0)} refs"
         )
-    else:
-        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back_balance")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.edit_message_text(
-            f"❌ **Cannot withdraw!**\n\n"
-            f"{check['reason']}\n\n"
-            f"💡 **Requirements:**\n• 380 Rs minimum\n• 12 referrals",
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
-        )
+        return
+    
+    keyboard = [
+        [InlineKeyboardButton("💳 Paytm", callback_data="paytm")],
+        [InlineKeyboardButton("💸 UPI", callback_data="upi")],
+        [InlineKeyboardButton("🏦 Bank", callback_data="bank")],
+        [InlineKeyboardButton("💰 Paypal", callback_data="paypal")],
+        [InlineKeyboardButton("₿ USDT TRC20", callback_data="usdt")],
+        [InlineKeyboardButton("🔙 Back", callback_data="back_balance")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        f"💸 **Withdraw ₹{user['balance']:.1f}**\n\n"
+        "Choose method:",
+        reply_markup=reply_markup
+    )
 
 async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
     user_id = query.from_user.id
-    method = query.data.split("_")[1].upper()
-    bal = await db.get_balance(user_id)
+    method = query.data.upper()
+    user = await db.get_user(user_id)
     
-    await db.add_balance(user_id, -bal)
+    await db.process_withdrawal(user_id, method)
+    await db.notify_admin(user_id, method, user['balance'])
     
-    await query.edit_message_text(
-        f"✅ **Withdrawal Requested!**\n\n"
-        f"💰 **Amount:** {bal:.1f} Rs\n"
-        f"💳 **Method:** {method}\n"
-        f"👤 **User ID:** `{user_id}`\n\n"
-        f"⏳ **Status:** Processing...\n"
-        f"📧 Admin will contact within 24h\n\n"
-        f"💳 **New Balance:** 0.0 Rs",
-        parse_mode='Markdown'
-    )
-    
-    admin_id = int(os.getenv("ADMIN_ID", "7836675446"))
-    try:
-        await context.bot.send_message(
-            admin_id,
-            f"💳 **NEW WITHDRAWAL!**\n\n"
-            f"👤 User: {user_id}\n"
-            f"💰 Amount: {bal:.1f} Rs\n"
-            f"💳 Method: {method}\n"
-            f"📅 {date.today()}"
-        )
-    except:
-        pass
+    await query.edit_message_text("✅ **Withdrawal Requested!**\nAdmin will process within 24h")
 
 async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
-    bal = await db.get_balance(user_id)
-    
-    keyboard = [[InlineKeyboardButton("💰 Withdraw", callback_data="withdraw")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        f"💳 **Your balance: {bal:.1f} Rs**\n\n👇 Ready to withdraw?",
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
-
-def get_main_keyboard():
-    keyboard = [
-        [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
-        [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
-        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Leaderboard 🏆")]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+    await balance(query.message, context)
