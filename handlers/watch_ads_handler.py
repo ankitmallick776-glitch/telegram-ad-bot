@@ -29,11 +29,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start with referral code: /start REF_12345_6789"""
+    """Handle /start with referral code - NOTIFY REFERRER, NOT NEW USER"""
     user_id = update.effective_user.id
-    username = update.effective_user.username or "User"
+    username = update.effective_user.username or f"User_{user_id}"
     
-    print(f"🔗 REFERRAL: User {user_id} joined with args: {context.args}")
+    print(f"🔗 REFERRAL: User {user_id} ({username}) joined with args: {context.args}")
     
     # Create user first
     await db.create_user_if_not_exists(user_id, username)
@@ -43,15 +43,34 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         referrer_code = context.args[0]
         print(f"📌 Referral code: {referrer_code}")
         
-        if await db.process_referral(user_id, referrer_code):
-            await update.message.reply_text(
-                "🎉 **Welcome via Referral!**\n\n"
-                "✅ Your referrer earned **40 Rs**!\n"
-                "Now start watching ads and earning! 💰"
-            )
+        # Get referrer user_id from code
+        referrer_info = await db.get_referrer_by_code(referrer_code)
+        if referrer_info:
+            referrer_id = referrer_info["user_id"]
+            referrer_username = referrer_info.get("username", f"User_{referrer_id}")
+            
+            if await db.process_referral(user_id, referrer_code):
+                print(f"✅ Referral processed: {user_id} → {referrer_id}")
+                
+                # NOTIFY REFERRER - NOT NEW USER!
+                try:
+                    await context.bot.send_message(
+                        referrer_id,
+                        f"🎉 **Someone joined via your referral!**\n\n"
+                        f"👤 **User:** @{username}\n"
+                        f"💰 **You earned: 40 Rs**\n"
+                        f"💳 **Check balance for details!**",
+                        parse_mode='Markdown'
+                    )
+                    print(f"📬 Notification sent to referrer {referrer_id}")
+                except Exception as e:
+                    print(f"⚠️ Could not send notification: {e}")
+            else:
+                print(f"❌ Referral failed for code: {referrer_code}")
         else:
-            print(f"❌ Referral failed for code: {referrer_code}")
+            print(f"❌ Referrer not found for code: {referrer_code}")
     
+    # Show welcome to NEW USER (no special notification)
     keyboard = [
         [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
         [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
