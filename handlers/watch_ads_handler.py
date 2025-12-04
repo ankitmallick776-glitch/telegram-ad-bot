@@ -6,21 +6,51 @@ import os
 from datetime import date
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generic /start - no referral"""
     user_id = update.effective_user.id
     username = update.effective_user.username or "User"
     
     await db.create_user_if_not_exists(user_id, username)
     
-    # Process referral code from start parameter
-    args = context.args
-    if args and args[0].startswith("REF_"):
-        referrer_code = args[0]
+    keyboard = [
+        [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
+        [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
+        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Leaderboard 🏆")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+    
+    await update.message.reply_text(
+        "🎉 **Welcome to Cashyads2!**\n\n"
+        "💰 **Watch ads → Earn 3-5 Rs each**\n"
+        "👥 **Refer → Earn 40 Rs + 5% commission**\n"
+        "🎁 **Daily bonus: 5 Rs (once/day)**",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start with referral code: /start REF_12345_6789"""
+    user_id = update.effective_user.id
+    username = update.effective_user.username or "User"
+    
+    print(f"🔗 REFERRAL: User {user_id} joined with args: {context.args}")
+    
+    # Create user first
+    await db.create_user_if_not_exists(user_id, username)
+    
+    # Process referral if args provided
+    if context.args:
+        referrer_code = context.args[0]
+        print(f"📌 Referral code: {referrer_code}")
+        
         if await db.process_referral(user_id, referrer_code):
             await update.message.reply_text(
-                "🎉 **Welcome via referral!**\n\n"
-                "Your referrer earned 40 Rs!\n"
-                "Start earning now! 💰"
+                "🎉 **Welcome via Referral!**\n\n"
+                "✅ Your referrer earned **40 Rs**!\n"
+                "Now start watching ads and earning! 💰"
             )
+        else:
+            print(f"❌ Referral failed for code: {referrer_code}")
     
     keyboard = [
         [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
@@ -103,16 +133,18 @@ async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     link = f"https://t.me/{bot_username}?start={referral_code}"
     referrals = int(user.get("referrals", 0))
     
-    keyboard = [[InlineKeyboardButton("📤 Share Link", url=f"https://t.me/share/url?url={link}&text=Join%20Cashyads2%20%F0%9F%92%B0%20Earn%20money%20watching%20ads!")]]
+    keyboard = [[InlineKeyboardButton("📤 Share Link", url=f"https://t.me/share/url?url={link}&text=Join%20Cashyads2%20and%20earn%20money%20watching%20ads%20%F0%9F%92%B0")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    print(f"📌 REFER: User {user_id} referral code: {referral_code}")
     
     await update.message.reply_text(
         f"👥 **Your Referral Link:**\n\n"
         f"`{link}`\n\n"
         f"👫 **Referrals: {referrals}**\n\n"
         f"💰 **Earnings:**\n"
-        f"• 40 Rs per referral\n"
-        f"• 5% commission on their ad earnings\n\n"
+        f"• **40 Rs per referral**\n"
+        f"• **5% commission on their ad earnings**\n\n"
         f"📱 Click to share!",
         reply_markup=reply_markup,
         parse_mode='Markdown'
