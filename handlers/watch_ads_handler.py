@@ -6,7 +6,7 @@ import os
 from datetime import date
 
 def get_main_keyboard():
-    """FINAL KEYBOARD - NO Leaderboard - MOVED TO TOP"""
+    """FINAL KEYBOARD - NO Leaderboard"""
     keyboard = [
         [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
         [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
@@ -255,6 +255,24 @@ async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parse_mode='HTML'
         )
 
+async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Go back to balance display"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    bal = await db.get_balance(user_id)
+    
+    keyboard = [[InlineKeyboardButton("💰 Withdraw", callback_data="withdraw")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        f"💳 <b>Your balance: {bal:.1f} Rs</b>\n\n"
+        "👇 Ready to withdraw?",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
 async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """FINAL: Process withdrawal after confirmation"""
     query = update.callback_query
@@ -314,4 +332,3 @@ async def back_methods(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup,
         parse_mode='HTML'
     )
-
