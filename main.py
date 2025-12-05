@@ -9,8 +9,8 @@ from handlers.watch_ads_handler import (
     start, start_referral, web_app_data, balance, bonus, refer,
     withdraw_menu, process_withdrawal, back_to_balance, get_main_keyboard
 )
-from handlers.broadcast_handler import broadcast_handler, cleanup_handler  # NEW
-from handlers.leaderboard_handler import leaderboard_handler  # ADD
+from handlers.broadcast_handler import broadcast_handler, cleanup_handler
+from handlers.leaderboard_handler import leaderboard_handler
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -42,7 +42,7 @@ async def main():
     # Leaderboard
     app.add_handler(leaderboard_handler)
     
-    # ADMIN COMMANDS - NEW
+    # ADMIN COMMANDS
     app.add_handler(broadcast_handler)
     app.add_handler(cleanup_handler)
     
@@ -51,10 +51,10 @@ async def main():
     
     # Unknown handler
     async def unknown(update: Update, context):
-        await update.message.reply_text("👇 Use the buttons!", reply_markup=get_main_keyboard())
+        await update.message.reply_text("👇 <b>Use the buttons!</b>", reply_markup=get_main_keyboard(), parse_mode='HTML')
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
     
-    print("🤖 Cashyads2 WITH BROADCAST+CLEANUP LIVE!")
+    print("🤖 Cashyads2 FULLY LIVE! (Broadcast + Cleanup + HTML)")
     await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
