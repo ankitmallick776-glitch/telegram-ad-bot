@@ -4,15 +4,16 @@ import os
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+
 from handlers.watch_ads_handler import (
-    start, start_referral, web_app_data, balance, bonus, refer, 
+    start, start_referral, web_app_data, balance, bonus, refer,
     withdraw_menu, process_withdrawal, back_to_balance, get_main_keyboard
 )
+from handlers.broadcast_handler import broadcast_handler, cleanup_handler  # NEW
+from handlers.leaderboard_handler import leaderboard_handler  # ADD
 
 load_dotenv()
-
 logging.basicConfig(level=logging.INFO)
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN missing!")
@@ -24,7 +25,7 @@ async def main():
     
     app = Application.builder().token(BOT_TOKEN).build()
     
-    # ⚠️ CRITICAL: REFERRAL HANDLER FIRST (with context.args check)
+    # ⚠️ CRITICAL: REFERRAL HANDLER FIRST
     app.add_handler(CommandHandler("start", start_referral, filters.Regex(".*"), has_args=True))
     
     # Message handlers
@@ -38,14 +39,22 @@ async def main():
     app.add_handler(CallbackQueryHandler(process_withdrawal, pattern="^withdraw_"))
     app.add_handler(CallbackQueryHandler(back_to_balance, pattern="^back_balance$"))
     
+    # Leaderboard
+    app.add_handler(leaderboard_handler)
+    
+    # ADMIN COMMANDS - NEW
+    app.add_handler(broadcast_handler)
+    app.add_handler(cleanup_handler)
+    
     # Generic /start (no args) - LAST
     app.add_handler(CommandHandler("start", start))
     
-    async def unknown(update, context):
+    # Unknown handler
+    async def unknown(update: Update, context):
         await update.message.reply_text("👇 Use the buttons!", reply_markup=get_main_keyboard())
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
     
-    print("🤖 Cashyads2 WITH REFERRALS LIVE!")
+    print("🤖 Cashyads2 WITH BROADCAST+CLEANUP LIVE!")
     await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
