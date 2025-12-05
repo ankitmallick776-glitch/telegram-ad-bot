@@ -2,6 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler
 from utils.supabase import db
 import os
+import asyncio
 from datetime import date, timedelta
 
 ADMIN_ID = int(os.getenv("ADMIN_ID", "7836675446"))
