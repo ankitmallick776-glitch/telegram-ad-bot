@@ -10,7 +10,7 @@ from handlers.watch_ads_handler import (
     withdraw_menu, process_withdrawal, back_to_balance, get_main_keyboard
 )
 from handlers.broadcast_handler import broadcast_handler, cleanup_handler
-from handlers.extra_handler import extra_handler  # NEW - Extra button
+from handlers.extra_handler import extra_handler
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -32,7 +32,7 @@ async def main():
     app.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
     app.add_handler(MessageHandler(filters.Regex("^(Bonus 🎁)$"), bonus))
     app.add_handler(MessageHandler(filters.Regex("^(Refer and Earn 👥)$"), refer))
-    app.add_handler(MessageHandler(filters.Regex("^(Extra ➡️)$"), extra_handler.callback))  # NEW Extra
+    app.add_handler(MessageHandler(filters.Regex("^(Extra ➡️)$"), extra_handler.callback))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
     
     # Callback handlers
@@ -53,11 +53,13 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
     
     print("🤖 Cashyads2 LIVE! (Extra ➡️ + Broadcast + Cleanup)")
+    print("🚀 Press Ctrl+C to stop cleanly")
+    
+    # SIMPLE RUN - NO COMPLEX SHUTDOWN
     await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n🛑 Shutting down...")
-    print("👋 Cashyads2 offline!")
+        print("\n👋 Cashyads2 stopped - Goodbye!")
