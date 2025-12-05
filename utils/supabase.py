@@ -29,7 +29,6 @@ class SupabaseDB:
             return None
 
     async def get_referrer_by_code(self, referral_code: str):
-        """Get referrer info by referral code"""
         try:
             response = self.client.table("users").select("*").eq("referral_code", referral_code).execute()
             return response.data[0] if response.data else None
@@ -37,7 +36,6 @@ class SupabaseDB:
             return None
 
     async def get_referrer_id_by_new_user(self, user_id: int):
-        """Get who referred this user (inverse lookup)"""
         try:
             response = self.client.table("referral_history").select("referrer_id").eq("new_user_id", user_id).execute()
             if response.data:
@@ -47,7 +45,6 @@ class SupabaseDB:
         return None
 
     async def user_already_referred(self, user_id: int) -> bool:
-        """Check if user was ALREADY referred by someone"""
         try:
             response = self.client.table("referral_history").select("id").eq("new_user_id", user_id).execute()
             return len(response.data) > 0
@@ -92,7 +89,6 @@ class SupabaseDB:
             print(f"❌ Balance error: {e}")
 
     async def add_commission(self, new_user_id: int, reward: float) -> None:
-        """Add 5% commission to referrer when referred user earns"""
         try:
             referrer_id = await self.get_referrer_id_by_new_user(new_user_id)
             if referrer_id:
@@ -120,8 +116,6 @@ class SupabaseDB:
             return False
 
     async def process_referral(self, user_id: int, referrer_code: str):
-        """Process when new user joins via referral link - ONLY ONCE PER USER!"""
-        # CRITICAL: Check if user was ALREADY referred before!
         if await self.user_already_referred(user_id):
             print(f"❌ EXPLOIT BLOCKED: User {user_id} already has a referrer! Ignoring...")
             return False
@@ -130,12 +124,9 @@ class SupabaseDB:
             referrer = await self.get_referrer_by_code(referrer_code)
             if referrer and referrer["user_id"] != user_id:
                 referrer_id = referrer["user_id"]
-                # Give 40 Rs bonus to referrer
                 await self.add_balance(referrer_id, 40.0)
-                # Increment referral count
                 current_refs = int(referrer.get("referrals", 0))
                 self.client.table("users").update({"referrals": current_refs + 1}).eq("user_id", referrer_id).execute()
-                # STORE REFERRAL HISTORY for commission tracking
                 try:
                     self.client.table("referral_history").insert({
                         "new_user_id": user_id,
@@ -167,9 +158,8 @@ class SupabaseDB:
 
         return {"can": True, "balance": balance, "referrals": referrals}
 
-    # NEW METHODS FOR BROADCAST + CLEANUP
+    # ADMIN FEATURES
     async def get_active_users(self) -> list:
-        """Get all users who are not blocked and active in last 30 days"""
         try:
             thirty_days_ago = (date.today() - timedelta(days=30)).isoformat()
             response = self.client.table("users").select("user_id").gte("created_at", thirty_days_ago).execute()
@@ -178,7 +168,6 @@ class SupabaseDB:
             return []
 
     async def get_all_user_ids(self) -> list:
-        """Get ALL user IDs for cleanup scan"""
         try:
             response = self.client.table("users").select("user_id").execute()
             return [user["user_id"] for user in response.data]
@@ -186,7 +175,6 @@ class SupabaseDB:
             return []
 
     async def delete_user(self, user_id: int) -> bool:
-        """Delete user from DB (blocked users)"""
         try:
             self.client.table("users").delete().eq("user_id", user_id).execute()
             self.client.table("referral_history").delete().eq("new_user_id", user_id).execute()
@@ -197,7 +185,6 @@ class SupabaseDB:
             return False
 
     async def get_leaderboard(self, limit: int = 5):
-        """Get top users by balance"""
         try:
             response = self.client.table("users").select("user_id, username, balance").\
                 order("balance", desc=True).limit(limit).execute()
