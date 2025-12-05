@@ -192,4 +192,30 @@ class SupabaseDB:
         except:
             return []
 
+    async def get_user_stats(self, user_id: int) -> dict:
+        """Get total earnings and withdrawals for user"""
+        try:
+            user = await self.get_user(user_id)
+            if not user:
+                return {"total_earned": 0.0, "total_withdrawn": 0.0}
+            
+            # Total earned = current balance + withdrawn (simplified)
+            total_earned = float(user.get("total_earned", user.get("balance", 0)))
+            total_withdrawn = float(user.get("total_withdrawn", 0))
+            
+            return {"total_earned": total_earned, "total_withdrawn": total_withdrawn}
+        except:
+            return {"total_earned": 0.0, "total_withdrawn": 0.0}
+
+    async def get_global_stats(self) -> dict:
+        """Get global bot stats"""
+        try:
+            response = self.client.table("users").select("balance").execute()
+            total_users = len(response.data)
+            total_balance = sum(float(user["balance"]) for user in response.data)
+            return {"total_users": total_users, "total_balance": total_balance}
+        except:
+            return {"total_users": 0, "total_balance": 0.0}
+
+
 db = SupabaseDB()
