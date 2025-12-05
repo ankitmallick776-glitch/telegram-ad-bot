@@ -7,9 +7,9 @@ async def extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_stats = await db.get_user_stats(user_id)
     
-    # Personal stats
     total_earned = user_stats["total_earned"]
     total_withdrawn = user_stats["total_withdrawn"]
+    referrals = user_stats.get("referrals", 0)
     
     # Global stats
     global_stats = await db.get_global_stats()
@@ -24,8 +24,10 @@ async def extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"➡️ <b>EXTRA INFO</b>\n\n"
         f"👤 <b>Your Stats:</b>\n"
-        f"💰 <b>Total Earned:</b> ₹{total_earned:.1f}\n"
-        f"💸 <b>Total Withdrawn:</b> ₹{total_withdrawn:.1f}\n\n"
+        f"💰 <b>Current Balance:</b> ₹{total_earned:.1f}\n"        # ✅ Shows balance
+        f"👥 <b>Referrals:</b> {referrals}\n"                       # ✅ Referral count
+        f"💸 <b>Total Withdrawn:</b> ₹{total_withdrawn:.1f}\n\n"   # ✅ Withdrawal tracking
+        
         f"📊 <b>Bot Stats:</b>\n"
         f"👥 <b>Total Users:</b> {global_stats['total_users']:,}\n"
         f"💎 <b>Total Balance:</b> ₹{global_stats['total_balance']:.1f}\n\n"
