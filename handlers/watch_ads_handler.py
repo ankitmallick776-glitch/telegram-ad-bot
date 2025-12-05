@@ -341,16 +341,23 @@ async def handle_payment_details(update: Update, context: ContextTypes.DEFAULT_T
     # Deduct balance
     await db.add_balance(user_id, -amount)
     
-    # Show confirmation to user
-    await update.message.reply_text(
-        f"✅ <b>Withdrawal Processed!</b>\n\n"
-        f"💰 <b>Amount:</b> ₹{amount:.1f}\n"
-        f"💳 <b>Method:</b> {method}\n"
-        f"👤 <b>Payment Details Received</b>\n\n"
-        f"⏳ <b>Status:</b> Processing...\n"
-        f"📧 Admin will contact within 24h\n\n"
-        f"💳 <b>New Balance:</b> ₹0.0",
-        reply_markup=get_main_keyboard(),
+    # Show confirmation to user - UPDATED
+await update.message.reply_text(
+    f"✅ <b>Withdrawal Request Sent Successfully!</b>\n\n"
+    f"💰 <b>Amount:</b> ₹{amount:.1f}\n"
+    f"💳 <b>Method:</b> {method}\n"
+    f"📄 <b>Payment Details:</b> {payment_details[:20]}...\n\n"
+    f"⏳ <b>Processing Time:</b>\n"
+    f"• Up to <b>7 working days</b>\n"
+    f"• Depends on payment method\n"
+    f"• Weekends/holidays excluded\n\n"
+    f"📧 <b>Next Steps:</b>\n"
+    f"• Admin will verify & process\n"
+    f"• You will be notified\n"
+    f"• Check back after 7 days\n\n"
+    f"💳 <b>New Balance:</b> ₹0.0\n\n"
+    f"👇 Earn more to withdraw again!",
+    reply_markup=get_main_keyboard(),
         parse_mode='HTML'
     )
     
