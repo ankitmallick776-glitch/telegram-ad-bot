@@ -25,7 +25,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👥 **Refer → Earn 40 Rs + 5% commission**\n"
         "🎁 **Daily bonus: 5 Rs (once/day)**",
         reply_markup=reply_markup,
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
 
 async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -59,7 +59,7 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "👥 **Refer → Earn 40 Rs + 5% commission**\n"
                 "🎁 **Daily bonus: 5 Rs (once/day)**",
                 reply_markup=reply_markup,
-                parse_mode='Markdown'
+                parse_mode='HTML'
             )
             return
         
@@ -107,7 +107,7 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👥 **Refer → Earn 40 Rs + 5% commission**\n"
         "🎁 **Daily bonus: 5 Rs (once/day)**",
         reply_markup=reply_markup,
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
 
 async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -131,7 +131,7 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💰 **You earned: +{reward:.1f} Rs**\n"
             f"💳 **New balance: {balance:.1f} Rs**",
             reply_markup=get_main_keyboard(),
-            parse_mode='Markdown'
+            parse_mode='HTML'
         )
     else:
         await update.message.reply_text(
@@ -149,7 +149,7 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"💳 **Your balance: {balance:.1f} Rs**\n\n👇 Ready to withdraw?",
         reply_markup=reply_markup,
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
 
 async def bonus(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -192,7 +192,7 @@ async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• **5% commission on their ad earnings**\n\n"
         f"📱 Click to share!",
         reply_markup=reply_markup,
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
 
 async def withdraw_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -218,7 +218,7 @@ async def withdraw_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👥 Referrals: {check['referrals']}\n\n"
             f"💰 **Choose method:**",
             reply_markup=reply_markup,
-            parse_mode='Markdown'
+            parse_mode='HTML'
         )
     else:
         keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back_balance")]]
@@ -229,7 +229,7 @@ async def withdraw_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{check['reason']}\n\n"
             f"💡 **Requirements:**\n• 380 Rs minimum\n• 12 referrals",
             reply_markup=reply_markup,
-            parse_mode='Markdown'
+            parse_mode='HTML'
         )
 
 async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -250,7 +250,7 @@ async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"⏳ **Status:** Processing...\n"
         f"📧 Admin will contact within 24h\n\n"
         f"💳 **New Balance:** 0.0 Rs",
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
     
     admin_id = int(os.getenv("ADMIN_ID", "7836675446"))
@@ -262,7 +262,7 @@ async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"💰 Amount: {bal:.1f} Rs\n"
             f"💳 Method: {method}\n"
             f"📅 {date.today()}",
-            parse_mode='Markdown'
+            parse_mode='HTML'
         )
     except:
         pass
@@ -279,7 +279,7 @@ async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(
         f"💳 **Your balance: {bal:.1f} Rs**\n\n👇 Ready to withdraw?",
         reply_markup=reply_markup,
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
 
 def get_main_keyboard():
