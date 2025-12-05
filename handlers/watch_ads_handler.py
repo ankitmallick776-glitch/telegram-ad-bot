@@ -12,12 +12,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await db.create_user_if_not_exists(user_id, username)
     
-    keyboard = [
-        [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
-        [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
-        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Extra ➡️")]
-    ]
-    
+    keyboard = get_main_keyboard()
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
     
     await update.message.reply_text(
@@ -67,24 +62,14 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         )
                         await context.bot.send_message(
                             referrer_id,
-                            notification_text,
-                            parse_mode='HTML'
+                            notification_text
                         )
                         print(f"📬 Notification sent to referrer {referrer_id}")
                     except Exception as e:
                         print(f"⚠️ Could not send notification: {e}")
-                else:
-                    print(f"❌ Referral failed for code: {referrer_code}")
-            else:
-                print(f"❌ Referrer not found for code: {referrer_code}")
     
-    # Show welcome (same for all)
-    keyboard = [
-        [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
-        [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
-        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Extra ➡️")]
-    ]
-    
+    # Show welcome keyboard
+    keyboard = get_main_keyboard()
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
     
     await update.message.reply_text(
@@ -108,7 +93,7 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.add_balance(user_id, reward)
         balance = await db.get_balance(user_id)
         
-        print(f"💰 REWARD: +{reward} = {balance}")
+        print(f"💰 REWARD: User {user_id} +{reward} = {balance}")
         
         # ADD 5% COMMISSION TO REFERRER!
         await db.add_commission(user_id, reward)
@@ -165,7 +150,11 @@ async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await db.get_user(user_id)
     
     if not user:
-        await update.message.reply_text("❌ <b>User not found!</b>", reply_markup=get_main_keyboard(), parse_mode='HTML')
+        await update.message.reply_text(
+            "❌ <b>User not found!</b>", 
+            reply_markup=get_main_keyboard(), 
+            parse_mode='HTML'
+        )
         return
     
     referral_code = user.get("referral_code", "")
@@ -173,7 +162,10 @@ async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     link = f"https://t.me/{bot_username}?start={referral_code}"
     referrals = int(user.get("referrals", 0))
     
-    keyboard = [[InlineKeyboardButton("📤 Share Link", url=f"https://t.me/share/url?url={link}&text=Join%20Cashyads2%20and%20earn%20money%20watching%20ads%20%F0%9F%92%B0")]]
+    keyboard = [[InlineKeyboardButton(
+        "📤 Share Link", 
+        url=f"https://t.me/share/url?url={link}&text=Join%20Cashyads2%20and%20earn%20money%20watching%20ads%20%F0%9F%92%B0"
+    )]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     print(f"📌 REFER: User {user_id} referral code: {referral_code}")
@@ -205,7 +197,6 @@ async def withdraw_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("💵 Paypal", callback_data="withdraw_paypal")],
             [InlineKeyboardButton("₿ USDT TRC20", callback_data="withdraw_usdt")]
         ]
-        
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
             f"💳 <b>Withdraw {check['balance']:.1f} Rs</b>\n\n"
@@ -283,9 +274,10 @@ async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 def get_main_keyboard():
+    """FINAL KEYBOARD - NO Leaderboard"""
     keyboard = [
         [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
         [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
-        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Leaderboard 🏆")]
+        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Extra ➡️")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
