@@ -37,20 +37,16 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     print(f"🔗 REFERRAL: User {user_id} ({username}) joined with args: {context.args}")
     
-    # Create user first
     await db.create_user_if_not_exists(user_id, username)
     
-    # Process referral if args provided
     if context.args:
         referrer_code = context.args[0]
         print(f"📌 Referral code: {referrer_code}")
         
-        # Check if already referred
         already_referred = await db.user_already_referred(user_id)
         if already_referred:
             print(f"⚠️ User {user_id} already has a referrer! Blocking duplicate...")
         else:
-            # Get referrer user_id from code
             referrer_info = await db.get_referrer_by_code(referrer_code)
             if referrer_info:
                 referrer_id = referrer_info["user_id"]
@@ -58,7 +54,6 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 if await db.process_referral(user_id, referrer_code):
                     print(f"✅ Referral processed: {user_id} → {referrer_id}")
-                    # NOTIFY REFERRER
                     try:
                         notification_text = (
                             f"🎉 Someone joined via your referral!\n\n"
@@ -74,7 +69,6 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception as e:
                         print(f"⚠️ Could not send notification: {e}")
     
-    # Show welcome keyboard
     await update.message.reply_text(
         "🎉 <b>Welcome to Cashyads2!</b>\n\n"
         "💰 <b>Watch ads → Earn 3-5 Rs each</b>\n"
@@ -97,8 +91,6 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         balance = await db.get_balance(user_id)
         
         print(f"💰 REWARD: User {user_id} +{reward} = {balance}")
-        
-        # ADD 5% COMMISSION TO REFERRER!
         await db.add_commission(user_id, reward)
         
         await update.message.reply_text(
@@ -186,7 +178,6 @@ async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def withdraw_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show payment methods (no validation yet)"""
     query = update.callback_query
     await query.answer()
     
@@ -208,18 +199,15 @@ async def withdraw_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Check requirements AFTER method selected"""
     query = update.callback_query
     await query.answer()
     
     user_id = query.from_user.id
     method = query.data.split("_")[1].upper()
     
-    # CHECK ELIGIBILITY
     check = await db.can_withdraw(user_id)
     
     if check["can"]:
-        # USER IS ELIGIBLE - Show confirmation
         bal = await db.get_balance(user_id)
         keyboard = [
             [InlineKeyboardButton("✅ Confirm Withdrawal", callback_data=f"confirm_withdraw_{method}")],
@@ -238,7 +226,6 @@ async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parse_mode='HTML'
         )
     else:
-        # USER NOT ELIGIBLE - Show why
         keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back_methods")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -256,7 +243,6 @@ async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
 
 async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Ask for payment details"""
     query = update.callback_query
     await query.answer()
     
@@ -264,12 +250,10 @@ async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
     method = query.data.split("_")[2].upper()
     bal = await db.get_balance(user_id)
     
-    # Store method + amount in context for next step
     context.user_data['withdrawal_method'] = method
     context.user_data['withdrawal_amount'] = bal
     context.user_data['withdrawal_user_id'] = user_id
     
-    # Ask for payment details
     if method == "PAYTM":
         await query.edit_message_text(
             f"📱 <b>Enter Your Paytm Number:</b>\n\n"
@@ -325,7 +309,6 @@ async def handle_payment_details(update: Update, context: ContextTypes.DEFAULT_T
     user_id = update.effective_user.id
     payment_details = update.message.text
     
-    # Get withdrawal info from context
     if 'withdrawal_method' not in context.user_data:
         await update.message.reply_text(
             "❌ <b>Session expired!</b>\n\n"
@@ -338,30 +321,45 @@ async def handle_payment_details(update: Update, context: ContextTypes.DEFAULT_T
     method = context.user_data['withdrawal_method']
     amount = context.user_data['withdrawal_amount']
     
-    # Deduct balance
     await db.add_balance(user_id, -amount)
     
-    # Show confirmation to user - UPDATED
-await update.message.reply_text(
-    f"✅ <b>Withdrawal Request Sent Successfully!</b>\n\n"
-    f"💰 <b>Amount:</b> ₹{amount:.1f}\n"
-    f"💳 <b>Method:</b> {method}\n"
-    f"📄 <b>Payment Details:</b> {payment_details[:20]}...\n\n"
-    f"⏳ <b>Processing Time:</b>\n"
-    f"• Up to <b>7 working days</b>\n"
-    f"• Depends on payment method\n"
-    f"• Weekends/holidays excluded\n\n"
-    f"📧 <b>Next Steps:</b>\n"
-    f"• Admin will verify & process\n"
-    f"• You will be notified\n"
-    f"• Check back after 7 days\n\n"
-    f"💳 <b>New Balance:</b> ₹0.0\n\n"
-    f"👇 Earn more to withdraw again!",
-    reply_markup=get_main_keyboard(),
+    await update.message.reply_text(
+        f"✅ <b>Withdrawal Processed!</b>\n\n"
+        f"💰 <b>Amount:</b> ₹{amount:.1f}\n"
+        f"💳 <b>Method:</b> {method}\n"
+        f"👤 <b>Payment Details Received</b>\n\n"
+        f"⏳ <b>Status:</b> Processing...\n"
+        f"📧 Admin will contact within 24h\n\n"
+        f"💳 <b>New Balance:</b> ₹0.0",
+        reply_markup=get_main_keyboard(),
         parse_mode='HTML'
     )
     
-    # Notify admin WITH payment details
+    await update.message.reply_text(
+        f"📋 <b>WITHDRAWAL CONFIRMATION</b>\n\n"
+        f"✅ Your withdrawal request has been <b>SUCCESSFULLY SUBMITTED</b>\n\n"
+        f"<b>Processing Details:</b>\n"
+        f"⏱️ Processing time: <b>5-7 working days</b>\n"
+        f"📅 Excludes weekends & public holidays\n"
+        f"🏦 Depends on your bank/payment service\n\n"
+        f"<b>Why it takes time:</b>\n"
+        f"• Bank verification & KYC checks\n"
+        f"• Payment gateway processing\n"
+        f"• Fraud prevention security\n"
+        f"• Weekend/holiday delays\n\n"
+        f"<b>What happens next:</b>\n"
+        f"1️⃣ Our admin verifies your request\n"
+        f"2️⃣ Amount transferred to your account\n"
+        f"3️⃣ Bank processes the payment\n"
+        f"4️⃣ Money appears in your account\n\n"
+        f"<b>Need Help?</b>\n"
+        f"📧 Contact: @CashyadsSupportBot\n"
+        f"⚠️ We never charge for withdrawals!\n\n"
+        f"💰 Keep earning more! Watch ads & refer friends.",
+        reply_markup=get_main_keyboard(),
+        parse_mode='HTML'
+    )
+    
     admin_id = int(os.getenv("ADMIN_ID", "7836675446"))
     try:
         await context.bot.send_message(
@@ -379,11 +377,9 @@ await update.message.reply_text(
     except Exception as e:
         print(f"⚠️ Admin notification failed: {e}")
     
-    # Clear context
     context.user_data.clear()
 
 async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Go back to balance display"""
     query = update.callback_query
     await query.answer()
     
@@ -401,7 +397,6 @@ async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def back_methods(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Go back to payment methods"""
     query = update.callback_query
     await query.answer()
     
