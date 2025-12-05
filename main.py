@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import signal
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
@@ -18,7 +19,12 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN missing!")
 
+# Global app reference for shutdown
+app = None
+
 async def main():
+    global app
+    
     from utils.supabase import db
     await db.init_table()
     print("✅ Cashyads2 Ready!")
@@ -55,9 +61,32 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
     
     print("🤖 Cashyads2 FULLY LIVE! (Broadcast + Cleanup + HTML)")
+    
+    # Graceful shutdown handler
+    def signal_handler(signum, frame):
+        print("\n🛑 Shutting down gracefully...")
+        asyncio.create_task(shutdown())
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     await app.run_polling(drop_pending_updates=True)
 
+async def shutdown():
+    """Graceful shutdown"""
+    global app
+    print("🔄 Stopping application...")
+    if app:
+        await app.stop()
+        await app.shutdown()
+    print("✅ Bot stopped cleanly!")
+
 if __name__ == "__main__":
-    import nest_asyncio
-    nest_asyncio.apply()
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("🛑 Keyboard interrupt - shutting down...")
+    except Exception as e:
+        print(f"❌ Error: {e}")
+    finally:
+        print("👋 Cashyads2 offline - Goodbye!")
