@@ -1,25 +1,38 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
+from telegram.ext import ContextTypes, MessageHandler, filters
 from utils.supabase import db
 
-async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    top_users = await db.get_leaderboard(5)
-    if not top_users:
-        await update.message.reply_text("🏆 <b>No users yet!</b>", parse_mode='HTML')
-        return
+async def extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Extra info page with links and stats"""
+    user_id = update.effective_user.id
+    user_stats = await db.get_user_stats(user_id)
+    
+    # Personal stats
+    total_earned = user_stats["total_earned"]
+    total_withdrawn = user_stats["total_withdrawn"]
+    
+    # Global stats
+    global_stats = await db.get_global_stats()
+    
+    keyboard = [
+        [InlineKeyboardButton("📢 Channel", url="https://t.me/CashyAds")],
+        [InlineKeyboardButton("💬 Support", url="https://t.me/CashyadsSupportBot")],
+        [InlineKeyboardButton("🔙 Main Menu", callback_data="back_main")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"➡️ <b>EXTRA INFO</b>\n\n"
+        f"👤 <b>Your Stats:</b>\n"
+        f"💰 <b>Total Earned:</b> ₹{total_earned:.1f}\n"
+        f"💸 <b>Total Withdrawn:</b> ₹{total_withdrawn:.1f}\n\n"
+        f"📊 <b>Bot Stats:</b>\n"
+        f"👥 <b>Total Users:</b> {global_stats['total_users']:,}\n"
+        f"💎 <b>Total Balance:</b> ₹{global_stats['total_balance']:.1f}\n\n"
+        f"📢 <b>Official Links:</b>",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
 
-    message = "🏆 <b>TOP 5 RICHEST</b>\n\n"
-    for i, user in enumerate(top_users, 1):
-        username = user['username'] or f"User #{user['user_id']}"
-        message += f"{i}. {username}\n💰 ₹{user.get('balance', 0):.1f}\n\n"
-
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refresh", callback_data="leaderboard")]])
-    await update.message.reply_text(message, reply_markup=keyboard, parse_mode='HTML')
-
-async def leaderboard_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await leaderboard(update, context)
-
-leaderboard_handler = CommandHandler("leaderboard", leaderboard)
-leaderboard_callback_handler = CallbackQueryHandler(leaderboard_callback, pattern="^leaderboard$")
+# Export handler
+extra_handler = MessageHandler(filters.Regex("^(Extra ➡️)$"), extra)
