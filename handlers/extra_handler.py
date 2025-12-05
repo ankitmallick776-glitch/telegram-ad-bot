@@ -14,19 +14,19 @@ async def extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Global stats
     global_stats = await db.get_global_stats()
     
+    # REMOVED CLOSE BUTTON - Only Channel + Support
     keyboard = [
         [InlineKeyboardButton("📢 Channel", url="https://t.me/CashyAds")],
-        [InlineKeyboardButton("💬 Support", url="https://t.me/CashyadsSupportBot")],
-        [InlineKeyboardButton("🔙 Main Menu", callback_data="back_main")]
+        [InlineKeyboardButton("💬 Support", url="https://t.me/CashyadsSupportBot")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
         f"➡️ <b>EXTRA INFO</b>\n\n"
         f"👤 <b>Your Stats:</b>\n"
-        f"💰 <b>Current Balance:</b> ₹{total_earned:.1f}\n"        # ✅ Shows balance
-        f"👥 <b>Referrals:</b> {referrals}\n"                       # ✅ Referral count
-        f"💸 <b>Total Withdrawn:</b> ₹{total_withdrawn:.1f}\n\n"   # ✅ Withdrawal tracking
+        f"💰 <b>Current Balance:</b> ₹{total_earned:.1f}\n"
+        f"👥 <b>Referrals:</b> {referrals}\n"
+        f"💸 <b>Total Withdrawn:</b> ₹{total_withdrawn:.1f}\n\n"
         
         f"📊 <b>Bot Stats:</b>\n"
         f"👥 <b>Total Users:</b> {global_stats['total_users']:,}\n"
