@@ -5,6 +5,15 @@ from utils.rewards import generate_reward
 import os
 from datetime import date
 
+def get_main_keyboard():
+    """FINAL KEYBOARD - NO Leaderboard - MOVED TO TOP"""
+    keyboard = [
+        [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
+        [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
+        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Extra ➡️")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Generic /start - no referral"""
     user_id = update.effective_user.id
@@ -12,15 +21,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await db.create_user_if_not_exists(user_id, username)
     
-    keyboard = get_main_keyboard()
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
-    
     await update.message.reply_text(
         "🎉 <b>Welcome to Cashyads2!</b>\n\n"
         "💰 <b>Watch ads → Earn 3-5 Rs each</b>\n"
         "👥 <b>Refer → Earn 40 Rs + 5% commission</b>\n"
         "🎁 <b>Daily bonus: 5 Rs (once/day)</b>",
-        reply_markup=reply_markup,
+        reply_markup=get_main_keyboard(),
         parse_mode='HTML'
     )
 
@@ -69,15 +75,12 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         print(f"⚠️ Could not send notification: {e}")
     
     # Show welcome keyboard
-    keyboard = get_main_keyboard()
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
-    
     await update.message.reply_text(
         "🎉 <b>Welcome to Cashyads2!</b>\n\n"
         "💰 <b>Watch ads → Earn 3-5 Rs each</b>\n"
         "👥 <b>Refer → Earn 40 Rs + 5% commission</b>\n"
         "🎁 <b>Daily bonus: 5 Rs (once/day)</b>",
-        reply_markup=reply_markup,
+        reply_markup=get_main_keyboard(),
         parse_mode='HTML'
     )
 
@@ -272,12 +275,3 @@ async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup,
         parse_mode='HTML'
     )
-
-def get_main_keyboard():
-    """FINAL KEYBOARD - NO Leaderboard"""
-    keyboard = [
-        [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
-        [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
-        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Extra ➡️")]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
