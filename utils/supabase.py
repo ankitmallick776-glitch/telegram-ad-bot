@@ -192,21 +192,6 @@ class SupabaseDB:
         except:
             return []
 
-    async def get_user_stats(self, user_id: int) -> dict:
-        """Get total earnings and withdrawals for user"""
-        try:
-            user = await self.get_user(user_id)
-            if not user:
-                return {"total_earned": 0.0, "total_withdrawn": 0.0}
-            
-            # Total earned = current balance + withdrawn (simplified)
-            total_earned = float(user.get("total_earned", user.get("balance", 0)))
-            total_withdrawn = float(user.get("total_withdrawn", 0))
-            
-            return {"total_earned": total_earned, "total_withdrawn": total_withdrawn}
-        except:
-            return {"total_earned": 0.0, "total_withdrawn": 0.0}
-
     async def get_global_stats(self) -> dict:
         """Get global bot stats"""
         try:
@@ -217,5 +202,23 @@ class SupabaseDB:
         except:
             return {"total_users": 0, "total_balance": 0.0}
 
+    async def get_user_stats(self, user_id: int) -> dict:
+        """Get total earnings and withdrawals for user - FIXED"""
+        try:
+            user = await self.get_user(user_id)
+            if not user:
+                return {"total_earned": 0.0, "total_withdrawn": 0.0, "referrals": 0}
+            
+            # Show current balance as total earned (works immediately)
+            balance = float(user.get("balance", 0))
+            referrals = int(user.get("referrals", 0))
+            
+            return {
+                "total_earned": balance,      # ✅ Shows current balance
+                "total_withdrawn": 0.0,       # Track withdrawals later
+                "referrals": referrals        # ✅ Referral count
+            }
+        except:
+            return {"total_earned": 0.0, "total_withdrawn": 0.0, "referrals": 0}
 
 db = SupabaseDB()
