@@ -186,61 +186,95 @@ async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def withdraw_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show payment methods (no validation yet)"""
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    check = await db.can_withdraw(user_id)
+    keyboard = [
+        [InlineKeyboardButton("💳 Paytm", callback_data="withdraw_paytm")],
+        [InlineKeyboardButton("💸 UPI", callback_data="withdraw_upi")],
+        [InlineKeyboardButton("🏦 Bank Transfer", callback_data="withdraw_bank")],
+        [InlineKeyboardButton("💵 Paypal", callback_data="withdraw_paypal")],
+        [InlineKeyboardButton("₿ USDT TRC20", callback_data="withdraw_usdt")],
+        [InlineKeyboardButton("🔙 Back", callback_data="back_balance")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
-    if check["can"]:
-        keyboard = [
-            [InlineKeyboardButton("💳 Paytm", callback_data="withdraw_paytm")],
-            [InlineKeyboardButton("💸 UPI", callback_data="withdraw_upi")],
-            [InlineKeyboardButton("🏦 Bank Transfer", callback_data="withdraw_bank")],
-            [InlineKeyboardButton("💵 Paypal", callback_data="withdraw_paypal")],
-            [InlineKeyboardButton("₿ USDT TRC20", callback_data="withdraw_usdt")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(
-            f"💳 <b>Withdraw {check['balance']:.1f} Rs</b>\n\n"
-            f"✅ <b>Minimum met ✓</b>\n"
-            f"👥 Referrals: {check['referrals']}\n\n"
-            f"💰 <b>Choose method:</b>",
-            reply_markup=reply_markup,
-            parse_mode='HTML'
-        )
-    else:
-        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back_balance")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(
-            f"❌ <b>Cannot withdraw!</b>\n\n"
-            f"{check['reason']}\n\n"
-            f"💡 <b>Requirements:</b>\n"
-            f"• 380 Rs minimum\n"
-            f"• 12 referrals",
-            reply_markup=reply_markup,
-            parse_mode='HTML'
-        )
+    await query.edit_message_text(
+        f"💳 <b>Choose Payment Method:</b>\n\n"
+        f"Select your preferred withdrawal method below:",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
 
 async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Check requirements AFTER method selected"""
     query = update.callback_query
     await query.answer()
     
     user_id = query.from_user.id
     method = query.data.split("_")[1].upper()
+    
+    # CHECK ELIGIBILITY
+    check = await db.can_withdraw(user_id)
+    
+    if check["can"]:
+        # USER IS ELIGIBLE - Show confirmation
+        bal = await db.get_balance(user_id)
+        keyboard = [
+            [InlineKeyboardButton("✅ Confirm Withdrawal", callback_data=f"confirm_withdraw_{method}")],
+            [InlineKeyboardButton("🔙 Back", callback_data="back_methods")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"✅ <b>Withdrawal Ready!</b>\n\n"
+            f"💰 <b>Amount:</b> ₹{bal:.1f}\n"
+            f"💳 <b>Method:</b> {method}\n"
+            f"👥 <b>Referrals:</b> {check['referrals']}\n\n"
+            f"✅ <b>All requirements met!</b>\n"
+            f"Click confirm to proceed.",
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+    else:
+        # USER NOT ELIGIBLE - Show why
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back_methods")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"❌ <b>Cannot Withdraw!</b>\n\n"
+            f"💳 <b>Method Selected:</b> {method}\n\n"
+            f"<b>Why you can't withdraw:</b>\n"
+            f"{check['reason']}\n\n"
+            f"💡 <b>Requirements:</b>\n"
+            f"• Minimum balance: ₹380\n"
+            f"• Minimum referrals: 12\n\n"
+            f"Keep earning to unlock withdrawals! 💰",
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+
+async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """FINAL: Process withdrawal after confirmation"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    method = query.data.split("_")[2].upper()
     bal = await db.get_balance(user_id)
     
     # Deduct balance
     await db.add_balance(user_id, -bal)
     
     await query.edit_message_text(
-        f"✅ <b>Withdrawal Requested!</b>\n\n"
-        f"💰 <b>Amount:</b> {bal:.1f} Rs\n"
+        f"✅ <b>Withdrawal Processed!</b>\n\n"
+        f"💰 <b>Amount:</b> ₹{bal:.1f}\n"
         f"💳 <b>Method:</b> {method}\n"
         f"👤 <b>User ID:</b> <code>{user_id}</code>\n\n"
         f"⏳ <b>Status:</b> Processing...\n"
         f"📧 Admin will contact within 24h\n\n"
-        f"💳 <b>New Balance:</b> 0.0 Rs",
+        f"💳 <b>New Balance:</b> ₹0.0",
         parse_mode='HTML'
     )
     
@@ -251,7 +285,7 @@ async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
             admin_id,
             f"💳 <b>NEW WITHDRAWAL!</b>\n\n"
             f"👤 User: {user_id}\n"
-            f"💰 Amount: {bal:.1f} Rs\n"
+            f"💰 Amount: ₹{bal:.1f}\n"
             f"💳 Method: {method}\n"
             f"📅 {date.today()}",
             parse_mode='HTML'
@@ -259,19 +293,25 @@ async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except:
         pass
 
-async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def back_methods(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Go back to payment methods"""
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    bal = await db.get_balance(user_id)
-    
-    keyboard = [[InlineKeyboardButton("💰 Withdraw", callback_data="withdraw")]]
+    keyboard = [
+        [InlineKeyboardButton("💳 Paytm", callback_data="withdraw_paytm")],
+        [InlineKeyboardButton("💸 UPI", callback_data="withdraw_upi")],
+        [InlineKeyboardButton("🏦 Bank Transfer", callback_data="withdraw_bank")],
+        [InlineKeyboardButton("💵 Paypal", callback_data="withdraw_paypal")],
+        [InlineKeyboardButton("₿ USDT TRC20", callback_data="withdraw_usdt")],
+        [InlineKeyboardButton("🔙 Back", callback_data="back_balance")]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
-        f"💳 <b>Your balance: {bal:.1f} Rs</b>\n\n"
-        "👇 Ready to withdraw?",
+        f"💳 <b>Choose Payment Method:</b>\n\n"
+        f"Select your preferred withdrawal method below:",
         reply_markup=reply_markup,
         parse_mode='HTML'
     )
+
