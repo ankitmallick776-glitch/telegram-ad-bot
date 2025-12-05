@@ -47,19 +47,14 @@ async def main():
     # Generic /start (no args) - LAST
     app.add_handler(CommandHandler("start", start))
     
-    # Unknown handler
     async def unknown(update: Update, context):
         await update.message.reply_text("👇 <b>Use the buttons!</b>", reply_markup=get_main_keyboard(), parse_mode='HTML')
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
     
-    print("🤖 Cashyads2 LIVE! (Extra ➡️ + Broadcast + Cleanup)")
-    print("🚀 Press Ctrl+C to stop cleanly")
-    
-    # SIMPLE RUN - NO COMPLEX SHUTDOWN
+    print("🤖 Cashyads2 FULLY LIVE! (Extra ➡️ + Broadcast + Cleanup)")
     await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n👋 Cashyads2 stopped - Goodbye!")
+    import nest_asyncio
+    nest_asyncio.apply()
+    asyncio.run(main())
