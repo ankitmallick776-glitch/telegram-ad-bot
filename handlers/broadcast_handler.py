@@ -35,7 +35,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     for i, user_id in enumerate(active_users, 1):
         try:
-            await context.bot.send_message(chat_id=user_id, text=message, parse_mode='Markdown')
+            await context.bot.send_message(chat_id=user_id, text=message, parse_mode='HTML')
             success_count += 1
         except:
             failed_count += 1
