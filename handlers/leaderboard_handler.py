@@ -5,10 +5,10 @@ from utils.supabase import db
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     top_users = await db.get_leaderboard(5)
     if not top_users:
-        await update.message.reply_text("🏆 No users yet!")
+        await update.message.reply_text("🏆 <b>No users yet!</b>", parse_mode='HTML')
         return
 
-    message = "🏆 **TOP 5 RICHEST**\n\n"
+    message = "🏆 <b>TOP 5 RICHEST</b>\n\n"
     for i, user in enumerate(top_users, 1):
         username = user['username'] or f"User #{user['user_id']}"
         message += f"{i}. {username}\n💰 ₹{user.get('balance', 0):.1f}\n\n"
