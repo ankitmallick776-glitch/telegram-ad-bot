@@ -255,6 +255,126 @@ async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parse_mode='HTML'
         )
 
+async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ask for payment details"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    method = query.data.split("_")[2].upper()
+    bal = await db.get_balance(user_id)
+    
+    # Store method + amount in context for next step
+    context.user_data['withdrawal_method'] = method
+    context.user_data['withdrawal_amount'] = bal
+    context.user_data['withdrawal_user_id'] = user_id
+    
+    # Ask for payment details
+    if method == "PAYTM":
+        await query.edit_message_text(
+            f"📱 <b>Enter Your Paytm Number:</b>\n\n"
+            f"💰 Amount: ₹{bal:.1f}\n"
+            f"💳 Method: PAYTM\n\n"
+            f"Please reply with your 10-digit Paytm number.\n"
+            f"Example: 9876543210",
+            parse_mode='HTML'
+        )
+    elif method == "UPI":
+        await query.edit_message_text(
+            f"💸 <b>Enter Your UPI ID:</b>\n\n"
+            f"💰 Amount: ₹{bal:.1f}\n"
+            f"💳 Method: UPI\n\n"
+            f"Please reply with your UPI ID.\n"
+            f"Example: username@paytm or name@okhdfcbank",
+            parse_mode='HTML'
+        )
+    elif method == "BANK":
+        await query.edit_message_text(
+            f"🏦 <b>Enter Your Bank Details:</b>\n\n"
+            f"💰 Amount: ₹{bal:.1f}\n"
+            f"💳 Method: BANK TRANSFER\n\n"
+            f"Please reply with your details in this format:\n"
+            f"<code>Account Number\nIFSC Code\nAccount Holder Name</code>\n\n"
+            f"Example:\n"
+            f"1234567890\n"
+            f"HDFC0000123\n"
+            f"John Doe",
+            parse_mode='HTML'
+        )
+    elif method == "PAYPAL":
+        await query.edit_message_text(
+            f"💵 <b>Enter Your PayPal Email:</b>\n\n"
+            f"💰 Amount: ₹{bal:.1f}\n"
+            f"💳 Method: PAYPAL\n\n"
+            f"Please reply with your PayPal email address.\n"
+            f"Example: john@gmail.com",
+            parse_mode='HTML'
+        )
+    elif method == "USDT":
+        await query.edit_message_text(
+            f"₿ <b>Enter Your USDT TRC20 Wallet:</b>\n\n"
+            f"💰 Amount: ₹{bal:.1f}\n"
+            f"💳 Method: USDT TRC20\n\n"
+            f"Please reply with your TRC20 wallet address.\n"
+            f"Example: TQCp8xxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            parse_mode='HTML'
+        )
+
+async def handle_payment_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process payment details and complete withdrawal"""
+    user_id = update.effective_user.id
+    payment_details = update.message.text
+    
+    # Get withdrawal info from context
+    if 'withdrawal_method' not in context.user_data:
+        await update.message.reply_text(
+            "❌ <b>Session expired!</b>\n\n"
+            "Please start withdrawal again from Balance button.",
+            reply_markup=get_main_keyboard(),
+            parse_mode='HTML'
+        )
+        return
+    
+    method = context.user_data['withdrawal_method']
+    amount = context.user_data['withdrawal_amount']
+    
+    # Deduct balance
+    await db.add_balance(user_id, -amount)
+    
+    # Show confirmation to user
+    await update.message.reply_text(
+        f"✅ <b>Withdrawal Processed!</b>\n\n"
+        f"💰 <b>Amount:</b> ₹{amount:.1f}\n"
+        f"💳 <b>Method:</b> {method}\n"
+        f"👤 <b>Payment Details Received</b>\n\n"
+        f"⏳ <b>Status:</b> Processing...\n"
+        f"📧 Admin will contact within 24h\n\n"
+        f"💳 <b>New Balance:</b> ₹0.0",
+        reply_markup=get_main_keyboard(),
+        parse_mode='HTML'
+    )
+    
+    # Notify admin WITH payment details
+    admin_id = int(os.getenv("ADMIN_ID", "7836675446"))
+    try:
+        await context.bot.send_message(
+            admin_id,
+            f"💳 <b>NEW WITHDRAWAL!</b>\n\n"
+            f"👤 <b>User ID:</b> {user_id}\n"
+            f"💰 <b>Amount:</b> ₹{amount:.1f}\n"
+            f"💳 <b>Method:</b> {method}\n"
+            f"📄 <b>Payment Details:</b>\n"
+            f"<code>{payment_details}</code>\n\n"
+            f"📅 {date.today()}",
+            parse_mode='HTML'
+        )
+        print(f"✅ Admin notified with payment details")
+    except Exception as e:
+        print(f"⚠️ Admin notification failed: {e}")
+    
+    # Clear context
+    context.user_data.clear()
+
 async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Go back to balance display"""
     query = update.callback_query
@@ -272,44 +392,6 @@ async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup,
         parse_mode='HTML'
     )
-
-async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """FINAL: Process withdrawal after confirmation"""
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = query.from_user.id
-    method = query.data.split("_")[2].upper()
-    bal = await db.get_balance(user_id)
-    
-    # Deduct balance
-    await db.add_balance(user_id, -bal)
-    
-    await query.edit_message_text(
-        f"✅ <b>Withdrawal Processed!</b>\n\n"
-        f"💰 <b>Amount:</b> ₹{bal:.1f}\n"
-        f"💳 <b>Method:</b> {method}\n"
-        f"👤 <b>User ID:</b> <code>{user_id}</code>\n\n"
-        f"⏳ <b>Status:</b> Processing...\n"
-        f"📧 Admin will contact within 24h\n\n"
-        f"💳 <b>New Balance:</b> ₹0.0",
-        parse_mode='HTML'
-    )
-    
-    # Notify admin
-    admin_id = int(os.getenv("ADMIN_ID", "7836675446"))
-    try:
-        await context.bot.send_message(
-            admin_id,
-            f"💳 <b>NEW WITHDRAWAL!</b>\n\n"
-            f"👤 User: {user_id}\n"
-            f"💰 Amount: ₹{bal:.1f}\n"
-            f"💳 Method: {method}\n"
-            f"📅 {date.today()}",
-            parse_mode='HTML'
-        )
-    except:
-        pass
 
 async def back_methods(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Go back to payment methods"""
