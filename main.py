@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 
 from handlers.watch_ads_handler import (
     start, start_referral, web_app_data, balance, bonus, refer,
-    withdraw_menu, process_withdrawal, back_to_balance, get_main_keyboard
+    withdraw_menu, process_withdrawal, back_to_balance, back_methods, confirm_withdrawal, get_main_keyboard
 )
 from handlers.broadcast_handler import broadcast_handler, cleanup_handler
 from handlers.extra_handler import extra_handler
@@ -35,9 +35,11 @@ async def main():
     app.add_handler(MessageHandler(filters.Regex("^(Extra ➡️)$"), extra_handler.callback))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
     
-    # Callback handlers
+    # Callback handlers - UPDATED WITHDRAWAL FLOW
     app.add_handler(CallbackQueryHandler(withdraw_menu, pattern="^withdraw$"))
     app.add_handler(CallbackQueryHandler(process_withdrawal, pattern="^withdraw_"))
+    app.add_handler(CallbackQueryHandler(confirm_withdrawal, pattern="^confirm_withdraw_"))  # NEW
+    app.add_handler(CallbackQueryHandler(back_methods, pattern="^back_methods$"))  # NEW
     app.add_handler(CallbackQueryHandler(back_to_balance, pattern="^back_balance$"))
     
     # ADMIN COMMANDS
@@ -51,7 +53,7 @@ async def main():
         await update.message.reply_text("👇 <b>Use the buttons!</b>", reply_markup=get_main_keyboard(), parse_mode='HTML')
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
     
-    print("🤖 Cashyads2 FULLY LIVE! (Extra ➡️ + Broadcast + Cleanup)")
+    print("🤖 Cashyads2 FULLY LIVE! (New Withdrawal Flow + Extra ➡️ + Broadcast + Cleanup)")
     await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
