@@ -82,7 +82,7 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
         [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
-        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Leaderboard 🏆")]
+        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Extra ➡️")]
     ]
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
