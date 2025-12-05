@@ -14,7 +14,7 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message += f"{i}. {username}\n💰 ₹{user.get('balance', 0):.1f}\n\n"
 
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refresh", callback_data="leaderboard")]])
-    await update.message.reply_text(message, reply_markup=keyboard, parse_mode='Markdown')
+    await update.message.reply_text(message, reply_markup=keyboard, parse_mode='HTML')
 
 async def leaderboard_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
