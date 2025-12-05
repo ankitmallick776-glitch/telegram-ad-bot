@@ -10,8 +10,7 @@ from handlers.watch_ads_handler import (
     withdraw_menu, process_withdrawal, back_to_balance, get_main_keyboard
 )
 from handlers.broadcast_handler import broadcast_handler, cleanup_handler
-from handlers.leaderboard_handler import leaderboard_handler
-from handlers.extra_handler import extra_handler  # NEW
+from handlers.extra_handler import extra_handler  # NEW - Extra button
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -33,16 +32,13 @@ async def main():
     app.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
     app.add_handler(MessageHandler(filters.Regex("^(Bonus 🎁)$"), bonus))
     app.add_handler(MessageHandler(filters.Regex("^(Refer and Earn 👥)$"), refer))
-    app.add_handler(MessageHandler(filters.Regex("^(Extra ➡️)$"), extra_handler.callback))  # NEW
+    app.add_handler(MessageHandler(filters.Regex("^(Extra ➡️)$"), extra_handler.callback))  # NEW Extra
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
     
     # Callback handlers
     app.add_handler(CallbackQueryHandler(withdraw_menu, pattern="^withdraw$"))
     app.add_handler(CallbackQueryHandler(process_withdrawal, pattern="^withdraw_"))
     app.add_handler(CallbackQueryHandler(back_to_balance, pattern="^back_balance$"))
-    
-    # Leaderboard
-    app.add_handler(leaderboard_handler)
     
     # ADMIN COMMANDS
     app.add_handler(broadcast_handler)
