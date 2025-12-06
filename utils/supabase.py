@@ -160,19 +160,19 @@ class SupabaseDB:
 
     # ADMIN FEATURES
     async def get_active_users(self) -> list:
-        try:
-            thirty_days_ago = (date.today() - timedelta(days=30)).isoformat()
-            response = self.client.table("users").select("user_id").gte("created_at", thirty_days_ago).execute()
-            return [user["user_id"] for user in response.data]
-        except:
-            return []
+    try:
+        thirty_days_ago = (date.today() - timedelta(days=30)).isoformat()
+        response = self.client.table("users").select("user_id").gte("created_at", thirty_days_ago).limit(-1).execute()
+        return [user["user_id"] for user in response.data]
+    except:
+        return []
 
-    async def get_all_user_ids(self) -> list:
-        try:
-            response = self.client.table("users").select("user_id").execute()
-            return [user["user_id"] for user in response.data]
-        except:
-            return []
+async def get_all_user_ids(self) -> list:
+    try:
+        response = self.client.table("users").select("user_id").limit(-1).execute()
+        return [user["user_id"] for user in response.data]
+    except:
+        return []
 
     async def delete_user(self, user_id: int) -> bool:
         try:
