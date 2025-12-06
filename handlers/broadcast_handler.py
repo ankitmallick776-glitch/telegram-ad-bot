@@ -7,9 +7,6 @@ from datetime import date, timedelta
 
 ADMIN_ID = int(os.getenv("ADMIN_ID", "7836675446"))
 
-# Store ongoing broadcasts
-ongoing_broadcasts = {}
-
 async def broadcast_task(context, admin_id, message, active_users):
     """Run broadcast in background (non-blocking)"""
     success_count = 0
