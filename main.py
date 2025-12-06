@@ -60,7 +60,7 @@ async def main():
         await update.message.reply_text("👇 <b>Use the buttons!</b>", reply_markup=get_main_keyboard(), parse_mode='HTML')
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
     
-    print("🤖 Cashyads2 FULLY LIVE! (Payment Details + Extra ➡️ + Broadcast + Cleanup)")
+    print("🤖 Cashyads2 FULLY LIVE! (Background Tasks + Payment Details + Unlimited Users)")
     await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
