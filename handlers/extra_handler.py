@@ -14,7 +14,6 @@ async def extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Global stats
     global_stats = await db.get_global_stats()
     
-    # REMOVED CLOSE BUTTON - Only Channel + Support
     keyboard = [
         [InlineKeyboardButton("📢 Channel", url="https://t.me/CashyAds")],
         [InlineKeyboardButton("💬 Support", url="https://t.me/CashyadsSupportBot")]
