@@ -160,19 +160,47 @@ class SupabaseDB:
 
     # ADMIN FEATURES
     async def get_active_users(self) -> list:
-    try:
-        thirty_days_ago = (date.today() - timedelta(days=30)).isoformat()
-        response = self.client.table("users").select("user_id").gte("created_at", thirty_days_ago).limit(-1).execute()
-        return [user["user_id"] for user in response.data]
-    except:
-        return []
+        """Get active users with pagination (safe for large datasets)"""
+        try:
+            all_users = []
+            batch_size = 500
+            offset = 0
+            thirty_days_ago = (date.today() - timedelta(days=30)).isoformat()
+            
+            while True:
+                response = self.client.table("users").select("user_id").gte("created_at", thirty_days_ago).range(offset, offset + batch_size - 1).execute()
+                if not response.data:
+                    break
+                all_users.extend([user["user_id"] for user in response.data])
+                offset += batch_size
+                print(f"📊 Loaded {len(all_users)} active users...")
+            
+            print(f"✅ Total active users: {len(all_users)}")
+            return all_users
+        except Exception as e:
+            print(f"❌ Error loading active users: {e}")
+            return []
 
-async def get_all_user_ids(self) -> list:
-    try:
-        response = self.client.table("users").select("user_id").limit(-1).execute()
-        return [user["user_id"] for user in response.data]
-    except:
-        return []
+    async def get_all_user_ids(self) -> list:
+        """Get ALL user IDs with pagination (safe for large datasets)"""
+        try:
+            all_users = []
+            batch_size = 500
+            offset = 0
+            
+            while True:
+                response = self.client.table("users").select("user_id").range(offset, offset + batch_size - 1).execute()
+                if not response.data:
+                    break
+                all_users.extend([user["user_id"] for user in response.data])
+                offset += batch_size
+                print(f"📊 Loaded {len(all_users)} users...")
+            
+            print(f"✅ Total users: {len(all_users)}")
+            return all_users
+        except Exception as e:
+            print(f"❌ Error loading users: {e}")
+            return []
 
     async def delete_user(self, user_id: int) -> bool:
         try:
@@ -186,39 +214,37 @@ async def get_all_user_ids(self) -> list:
 
     async def get_leaderboard(self, limit: int = 5):
         try:
-            response = self.client.table("users").select("user_id, username, balance").\
-                order("balance", desc=True).limit(limit).execute()
+            response = self.client.table("users").select("user_id, username, balance").order("balance", desc=True).limit(limit).execute()
             return response.data
         except:
             return []
 
-    async def get_global_stats(self) -> dict:
-        """Get global bot stats"""
-        try:
-            response = self.client.table("users").select("balance").execute()
-            total_users = len(response.data)
-            total_balance = sum(float(user["balance"]) for user in response.data)
-            return {"total_users": total_users, "total_balance": total_balance}
-        except:
-            return {"total_users": 0, "total_balance": 0.0}
-
     async def get_user_stats(self, user_id: int) -> dict:
-        """Get total earnings and withdrawals for user - FIXED"""
+        """Get total earnings and withdrawals for user"""
         try:
             user = await self.get_user(user_id)
             if not user:
                 return {"total_earned": 0.0, "total_withdrawn": 0.0, "referrals": 0}
             
-            # Show current balance as total earned (works immediately)
             balance = float(user.get("balance", 0))
             referrals = int(user.get("referrals", 0))
             
             return {
-                "total_earned": balance,      # ✅ Shows current balance
-                "total_withdrawn": 0.0,       # Track withdrawals later
-                "referrals": referrals        # ✅ Referral count
+                "total_earned": balance,
+                "total_withdrawn": 0.0,
+                "referrals": referrals
             }
         except:
             return {"total_earned": 0.0, "total_withdrawn": 0.0, "referrals": 0}
+
+    async def get_global_stats(self) -> dict:
+        """Get global bot stats"""
+        try:
+            response = self.client.table("users").select("balance").limit(-1).execute()
+            total_users = len(response.data)
+            total_balance = sum(float(user["balance"]) for user in response.data)
+            return {"total_users": total_users, "total_balance": total_balance}
+        except:
+            return {"total_users": 0, "total_balance": 0.0}
 
 db = SupabaseDB()
