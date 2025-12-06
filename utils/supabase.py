@@ -158,7 +158,6 @@ class SupabaseDB:
 
         return {"can": True, "balance": balance, "referrals": referrals}
 
-    # ADMIN FEATURES
     async def get_active_users(self) -> list:
         """Get active users with pagination (safe for large datasets)"""
         try:
@@ -238,13 +237,28 @@ class SupabaseDB:
             return {"total_earned": 0.0, "total_withdrawn": 0.0, "referrals": 0}
 
     async def get_global_stats(self) -> dict:
-        """Get global bot stats"""
+        """Get global bot stats - FIXED VERSION"""
         try:
-            response = self.client.table("users").select("balance").limit(-1).execute()
-            total_users = len(response.data)
-            total_balance = sum(float(user["balance"]) for user in response.data)
+            all_users = []
+            batch_size = 500
+            offset = 0
+            total_balance = 0.0
+            
+            # Fetch all users in batches
+            while True:
+                response = self.client.table("users").select("balance").range(offset, offset + batch_size - 1).execute()
+                if not response.data:
+                    break
+                all_users.extend(response.data)
+                total_balance += sum(float(user["balance"]) for user in response.data)
+                offset += batch_size
+                print(f"📊 Loaded {len(all_users)} users for stats...")
+            
+            total_users = len(all_users)
+            print(f"✅ Global Stats: {total_users} users, ₹{total_balance:.1f} total balance")
             return {"total_users": total_users, "total_balance": total_balance}
-        except:
+        except Exception as e:
+            print(f"❌ Error getting global stats: {e}")
             return {"total_users": 0, "total_balance": 0.0}
 
 db = SupabaseDB()
