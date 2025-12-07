@@ -56,16 +56,21 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     print(f"✅ Referral processed: {user_id} → {referrer_id}")
                     try:
                         notification_text = (
-                            f"🎉 Someone joined via your referral!\n\n"
+                            f"🎉 <b>SOMEONE JOINED YOUR REFERRAL!</b>\n\n"
                             f"👤 User: {username}\n"
-                            f"💰 You earned: 40 Rs\n"
-                            f"💳 Check balance for details!"
+                            f"📺 <b>They need to watch 5 ads</b>\n"
+                            f"💰 You'll get 40 Rs when they do!\n\n"
+                            f"💡 Tell them to:\n"
+                            f"1️⃣ Click [Watch Ads 💰]\n"
+                            f"2️⃣ Watch 5 ads\n"
+                            f"3️⃣ You get 40 Rs bonus!"
                         )
                         await context.bot.send_message(
                             referrer_id,
-                            notification_text
+                            notification_text,
+                            parse_mode='HTML'
                         )
-                        print(f"📬 Notification sent to referrer {referrer_id}")
+                        print(f"📬 Referral notification sent to {referrer_id}")
                     except Exception as e:
                         print(f"⚠️ Could not send notification: {e}")
     
@@ -79,7 +84,7 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle mini app ad completion"""
+    """Handle mini app ad completion with referral bonus check"""
     user_id = update.effective_user.id
     data = update.effective_message.web_app_data.data
     
@@ -90,7 +95,11 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.add_balance(user_id, reward)
         balance = await db.get_balance(user_id)
         
-        print(f"💰 REWARD: User {user_id} +{reward} = {balance}")
+        # Record ad watch
+        await db.add_ad_watch(user_id)
+        ad_count = await db.get_user_ad_count(user_id)
+        
+        print(f"💰 REWARD: User {user_id} +{reward} = {balance} (Ads watched: {ad_count})")
         await db.add_commission(user_id, reward)
         
         await update.message.reply_text(
@@ -100,6 +109,40 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_main_keyboard(),
             parse_mode='HTML'
         )
+        
+        # CHECK IF USER HAS PENDING REFERRAL BONUS
+        pending = await db.get_pending_referral_bonus(user_id)
+        if pending["has_pending"]:
+            referrer_id = pending["referrer_id"]
+            
+            # Process bonus
+            if await db.process_referral_bonus(user_id, referrer_id):
+                # Notify user
+                await update.message.reply_text(
+                    f"🎉 <b>REFERRAL BONUS UNLOCKED!</b>\n\n"
+                    f"✅ You watched 5 ads!\n"
+                    f"💰 Your referrer earned: 40 Rs\n"
+                    f"💡 Keep watching for more rewards!",
+                    reply_markup=get_main_keyboard(),
+                    parse_mode='HTML'
+                )
+                
+                # Notify referrer
+                try:
+                    referrer = await db.get_user(referrer_id)
+                    referrer_name = referrer.get("username", f"Friend") if referrer else "Friend"
+                    
+                    await context.bot.send_message(
+                        referrer_id,
+                        f"🎉 <b>REFERRAL BONUS EARNED!</b>\n\n"
+                        f"✅ {referrer_name} watched 5 ads!\n"
+                        f"💰 You earned: 40 Rs\n"
+                        f"💳 <b>Check balance for details!</b>",
+                        parse_mode='HTML'
+                    )
+                    print(f"📬 Bonus notification sent to referrer {referrer_id}")
+                except Exception as e:
+                    print(f"⚠️ Could not send bonus notification: {e}")
     else:
         await update.message.reply_text(
             "❌ <b>Ad cancelled!</b>\n👇 Try again:",
@@ -170,7 +213,7 @@ async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"<code>{link}</code>\n\n"
         f"👫 <b>Referrals: {referrals}</b>\n\n"
         f"💰 <b>Earnings:</b>\n"
-        f"• <b>40 Rs per referral</b>\n"
+        f"• <b>40 Rs per referral (after they watch 5 ads)</b>\n"
         f"• <b>5% commission on their ad earnings</b>\n\n"
         f"📱 Click to share!",
         reply_markup=reply_markup,
