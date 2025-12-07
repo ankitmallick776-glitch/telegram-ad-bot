@@ -60,7 +60,8 @@ class SupabaseDB:
         user_data = {
             "user_id": user_id,
             "balance": 0.0,
-            "referrals": 0
+            "referrals": 0,
+            "ads_watched": 0
         }
 
         if username:
@@ -241,7 +242,7 @@ class SupabaseDB:
             return {"total_earned": 0.0, "total_withdrawn": 0.0, "referrals": 0}
 
     async def get_global_stats(self) -> dict:
-        """Get global bot stats - FIXED VERSION"""
+        """Get global bot stats"""
         try:
             all_users = []
             batch_size = 500
@@ -265,28 +266,28 @@ class SupabaseDB:
             print(f"❌ Error getting global stats: {e}")
             return {"total_users": 0, "total_balance": 0.0}
 
-    # NEW METHODS FOR AD-WATCHING REFERRAL BONUS
+    # NEW METHODS FOR AD-WATCHING REFERRAL BONUS (NO ad_watches TABLE)
     async def get_user_ad_count(self, user_id: int) -> int:
-        """Get number of ads watched by user"""
+        """Get number of ads watched by user (from users table counter)"""
         try:
-            response = self.client.table("ad_watches").select("id", count="exact").eq("user_id", user_id).execute()
-            return response.count if hasattr(response, 'count') else 0
+            user = await self.get_user(user_id)
+            return int(user.get("ads_watched", 0)) if user else 0
         except:
             return 0
 
     async def add_ad_watch(self, user_id: int) -> None:
-        """Record that user watched an ad"""
+        """Increment ad watch counter in users table (no separate table)"""
         try:
-            self.client.table("ad_watches").insert({
-                "user_id": user_id,
-                "watched_at": date.today().isoformat()
-            }).execute()
-            print(f"📺 User {user_id} watched ad (count updated)")
+            user = await self.get_user(user_id)
+            if user:
+                current = int(user.get("ads_watched", 0))
+                self.client.table("users").update({"ads_watched": current + 1}).eq("user_id", user_id).execute()
+                print(f"📺 User {user_id} watched ad (total: {current + 1})")
         except Exception as e:
             print(f"⚠️ Ad watch error: {e}")
 
     async def get_pending_referral_bonus(self, user_id: int) -> dict:
-        """Check if user has pending referral bonus (5 ads watched)"""
+        """Check if user watched 5+ ads for referral bonus"""
         try:
             referrer_response = self.client.table("referral_history").select("referrer_id").eq("new_user_id", user_id).execute()
             if not referrer_response.data:
@@ -299,7 +300,7 @@ class SupabaseDB:
             if bonus_response.data:
                 return {"has_pending": False, "referrer_id": None}  # Already got bonus
             
-            # Get ad count
+            # Get ad count from users table counter (not ad_watches)
             ad_count = await self.get_user_ad_count(user_id)
             
             if ad_count >= 5:
