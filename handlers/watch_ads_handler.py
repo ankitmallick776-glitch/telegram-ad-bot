@@ -22,7 +22,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.create_user_if_not_exists(user_id, username)
     
     await update.message.reply_text(
-        "🎉 <b>Welcome to Cashyads!</b>\n\n"
+        "🎉 <b>Welcome to Cashyads2!</b>\n\n"
         "💰 <b>Watch ads → Earn 3-5 Rs each</b>\n"
         "👥 <b>Refer → Earn 40 Rs + 5% commission</b>\n"
         "🎁 <b>Daily bonus: 5 Rs (once/day)</b>",
@@ -70,7 +70,7 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         print(f"⚠️ Could not send notification: {e}")
     
     await update.message.reply_text(
-        "🎉 <b>Welcome to Cashyads!</b>\n\n"
+        "🎉 <b>Welcome to Cashyads2!</b>\n\n"
         "💰 <b>Watch ads → Earn 3-5 Rs each</b>\n"
         "👥 <b>Refer → Earn 40 Rs + 5% commission</b>\n"
         "🎁 <b>Daily bonus: 5 Rs (once/day)</b>",
