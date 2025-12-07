@@ -116,6 +116,7 @@ class SupabaseDB:
             return False
 
     async def process_referral(self, user_id: int, referrer_code: str):
+        """Process referral WITHOUT immediate bonus (bonus after 5 ads)"""
         if await self.user_already_referred(user_id):
             print(f"❌ EXPLOIT BLOCKED: User {user_id} already has a referrer! Ignoring...")
             return False
@@ -124,9 +125,11 @@ class SupabaseDB:
             referrer = await self.get_referrer_by_code(referrer_code)
             if referrer and referrer["user_id"] != user_id:
                 referrer_id = referrer["user_id"]
-                await self.add_balance(referrer_id, 40.0)
+                
+                # Link referral WITHOUT giving bonus yet
                 current_refs = int(referrer.get("referrals", 0))
                 self.client.table("users").update({"referrals": current_refs + 1}).eq("user_id", referrer_id).execute()
+                
                 try:
                     self.client.table("referral_history").insert({
                         "new_user_id": user_id,
@@ -137,7 +140,8 @@ class SupabaseDB:
                     print(f"📊 Referral history stored: {user_id} → {referrer_id}")
                 except Exception as e:
                     print(f"⚠️ History error: {e}")
-                print(f"✅ REFERRAL: {user_id} joined via {referrer_id} → +40 Rs")
+                
+                print(f"✅ REFERRAL: {user_id} joined via {referrer_id} (Bonus pending - 5 ads required)")
                 return True
         except Exception as e:
             print(f"❌ Referral error: {e}")
@@ -260,5 +264,69 @@ class SupabaseDB:
         except Exception as e:
             print(f"❌ Error getting global stats: {e}")
             return {"total_users": 0, "total_balance": 0.0}
+
+    # NEW METHODS FOR AD-WATCHING REFERRAL BONUS
+    async def get_user_ad_count(self, user_id: int) -> int:
+        """Get number of ads watched by user"""
+        try:
+            response = self.client.table("ad_watches").select("id", count="exact").eq("user_id", user_id).execute()
+            return response.count if hasattr(response, 'count') else 0
+        except:
+            return 0
+
+    async def add_ad_watch(self, user_id: int) -> None:
+        """Record that user watched an ad"""
+        try:
+            self.client.table("ad_watches").insert({
+                "user_id": user_id,
+                "watched_at": date.today().isoformat()
+            }).execute()
+            print(f"📺 User {user_id} watched ad (count updated)")
+        except Exception as e:
+            print(f"⚠️ Ad watch error: {e}")
+
+    async def get_pending_referral_bonus(self, user_id: int) -> dict:
+        """Check if user has pending referral bonus (5 ads watched)"""
+        try:
+            referrer_response = self.client.table("referral_history").select("referrer_id").eq("new_user_id", user_id).execute()
+            if not referrer_response.data:
+                return {"has_pending": False, "referrer_id": None}
+            
+            referrer_id = referrer_response.data[0]["referrer_id"]
+            
+            # Check if already got bonus
+            bonus_response = self.client.table("referral_bonuses").select("id").eq("user_id", user_id).eq("referrer_id", referrer_id).execute()
+            if bonus_response.data:
+                return {"has_pending": False, "referrer_id": None}  # Already got bonus
+            
+            # Get ad count
+            ad_count = await self.get_user_ad_count(user_id)
+            
+            if ad_count >= 5:
+                return {"has_pending": True, "referrer_id": referrer_id, "ad_count": ad_count}
+            
+            return {"has_pending": False, "referrer_id": referrer_id, "ad_count": ad_count}
+        except:
+            return {"has_pending": False, "referrer_id": None}
+
+    async def process_referral_bonus(self, user_id: int, referrer_id: int) -> bool:
+        """Award 40Rs to referrer after 5 ads watched"""
+        try:
+            # Award 40Rs to referrer
+            await self.add_balance(referrer_id, 40.0)
+            
+            # Record bonus as paid
+            self.client.table("referral_bonuses").insert({
+                "user_id": user_id,
+                "referrer_id": referrer_id,
+                "bonus_amount": 40.0,
+                "awarded_at": date.today().isoformat()
+            }).execute()
+            
+            print(f"✅ BONUS AWARDED: {referrer_id} got 40Rs from {user_id}")
+            return True
+        except Exception as e:
+            print(f"❌ Bonus error: {e}")
+            return False
 
 db = SupabaseDB()
