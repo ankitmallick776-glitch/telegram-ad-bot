@@ -117,6 +117,10 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Process bonus
             if await db.process_referral_bonus(user_id, referrer_id):
+                # Get NEW USER's name (the one who watched ads) ✅ FIXED
+                new_user = await db.get_user(user_id)
+                new_user_name = new_user.get("username", f"User") if new_user else "Friend"
+                
                 # Notify user
                 await update.message.reply_text(
                     f"🎉 <b>REFERRAL BONUS UNLOCKED!</b>\n\n"
@@ -127,20 +131,17 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode='HTML'
                 )
                 
-                # Notify referrer
+                # Notify referrer with NEW USER's name ✅ FIXED
                 try:
-                    referrer = await db.get_user(referrer_id)
-                    referrer_name = referrer.get("username", f"Friend") if referrer else "Friend"
-                    
                     await context.bot.send_message(
                         referrer_id,
                         f"🎉 <b>REFERRAL BONUS EARNED!</b>\n\n"
-                        f"✅ {referrer_name} watched 5 ads!\n"
+                        f"✅ <b>{new_user_name}</b> watched 5 ads!\n"
                         f"💰 You earned: 40 Rs\n"
                         f"💳 <b>Check balance for details!</b>",
                         parse_mode='HTML'
                     )
-                    print(f"📬 Bonus notification sent to referrer {referrer_id}")
+                    print(f"📬 Bonus notification sent to referrer {referrer_id} (showing {new_user_name})")
                 except Exception as e:
                     print(f"⚠️ Could not send bonus notification: {e}")
     else:
