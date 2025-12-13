@@ -97,7 +97,7 @@ class SupabaseDB:
             return False
 
     async def process_referral(self, user_id: int, referrer_code: str):
-        """Process referral with INSTANT 40Rs bonus (OLD SIMPLE WAY)"""
+        """Process referral with INSTANT 40Rs bonus"""
         if await self.user_already_referred(user_id):
             print(f"❌ EXPLOIT BLOCKED: User {user_id} already has a referrer! Ignoring...")
             return False
@@ -158,7 +158,6 @@ class SupabaseDB:
         return {"can": True, "balance": balance, "referrals": referrals}
 
     async def get_active_users(self) -> list:
-        """Get active users with pagination"""
         try:
             all_users = []
             batch_size = 500
@@ -180,7 +179,6 @@ class SupabaseDB:
             return []
 
     async def get_all_user_ids(self) -> list:
-        """Get ALL user IDs with pagination"""
         try:
             all_users = []
             batch_size = 500
@@ -211,7 +209,6 @@ class SupabaseDB:
             return False
 
     async def get_global_stats(self) -> dict:
-        """Get global bot stats"""
         try:
             all_users = []
             batch_size = 500
@@ -232,5 +229,24 @@ class SupabaseDB:
         except Exception as e:
             print(f"❌ Error getting global stats: {e}")
             return {"total_users": 0, "total_balance": 0.0}
+
+    # MISSING METHOD - NEEDED FOR extra_handler.py
+    async def get_user_stats(self, user_id: int) -> dict:
+        """Get user stats for extra handler"""
+        try:
+            user = await self.get_user(user_id)
+            if not user:
+                return {"total_earned": 0.0, "total_withdrawn": 0.0, "referrals": 0}
+            
+            balance = float(user.get("balance", 0))
+            referrals = int(user.get("referrals", 0))
+            
+            return {
+                "total_earned": balance,
+                "total_withdrawn": 0.0,
+                "referrals": referrals
+            }
+        except:
+            return {"total_earned": 0.0, "total_withdrawn": 0.0, "referrals": 0}
 
 db = SupabaseDB()
