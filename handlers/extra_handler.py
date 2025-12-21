@@ -3,10 +3,9 @@ from telegram.ext import ContextTypes, MessageHandler, filters
 from utils.supabase import db
 
 async def extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Extra info page - FAST & COMPACT with total users"""
+    """Extra info page - INSTANT (reads from stats table)"""
     user_id = update.effective_user.id
     
-    # Fetch user stats (no logs)
     user = await db.get_user(user_id)
     if not user:
         await update.message.reply_text(
@@ -18,9 +17,8 @@ async def extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balance = float(user.get("balance", 0))
     referrals = int(user.get("referrals", 0))
     
-    # Get total users count (fast, no logs)
-    all_users = await db.get_all_user_ids()
-    total_users = len(all_users)
+    # INSTANT - reads from stats table (no calculation)
+    total_users = await db.get_total_user_count()
     
     keyboard = [
         [InlineKeyboardButton("📢 Channel", url="https://t.me/CashyAds")],
@@ -40,5 +38,4 @@ async def extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='HTML'
     )
 
-# Export handler
 extra_handler = MessageHandler(filters.Regex("^(Extra ➡️)$"), extra)
