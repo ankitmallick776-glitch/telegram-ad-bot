@@ -63,6 +63,7 @@ class SupabaseDB:
         try:
             self.client.table("users").insert(user_data).execute()
             print(f"👤 CREATED new user {user_id} with code {referral_code}")
+            # Stats table auto-updates via trigger
         except Exception as e:
             print(f"⚠️ Create error: {e}")
 
@@ -97,9 +98,8 @@ class SupabaseDB:
             return False
 
     async def process_referral(self, user_id: int, referrer_code: str):
-        """Process referral with INSTANT 40Rs bonus"""
         if await self.user_already_referred(user_id):
-            print(f"❌ EXPLOIT BLOCKED: User {user_id} already has a referrer! Ignoring...")
+            print(f"❌ EXPLOIT BLOCKED: User {user_id} already has a referrer!")
             return False
 
         try:
@@ -107,12 +107,10 @@ class SupabaseDB:
             if referrer and referrer["user_id"] != user_id:
                 referrer_id = referrer["user_id"]
                 
-                # INSTANT 40Rs BONUS + referral count
                 await self.add_balance(referrer_id, 40.0)
                 current_refs = int(referrer.get("referrals", 0))
                 self.client.table("users").update({"referrals": current_refs + 1}).eq("user_id", referrer_id).execute()
                 
-                # Store referral history
                 try:
                     self.client.table("referral_history").insert({
                         "new_user_id": user_id,
@@ -120,25 +118,23 @@ class SupabaseDB:
                         "referral_code": referrer_code,
                         "created_at": date.today().isoformat()
                     }).execute()
-                    print(f"📊 Referral history stored: {user_id} → {referrer_id}")
                 except Exception as e:
                     print(f"⚠️ History error: {e}")
                 
-                print(f"✅ REFERRAL COMPLETE: {user_id} → {referrer_id} (+40 Rs INSTANT)")
+                print(f"✅ REFERRAL: {user_id} → {referrer_id} (+40 Rs)")
                 return True
         except Exception as e:
             print(f"❌ Referral error: {e}")
         return False
 
     async def add_referral_commission(self, new_user_id: int, reward: float) -> None:
-        """5% commission on new user's ad earnings"""
         try:
             response = self.client.table("referral_history").select("referrer_id").eq("new_user_id", new_user_id).execute()
             if response.data:
                 referrer_id = response.data[0]["referrer_id"]
                 commission = reward * 0.05
                 await self.add_balance(referrer_id, commission)
-                print(f"🤝 COMMISSION: {new_user_id} earned {reward} → {referrer_id} gets 5% = {commission:.2f} Rs")
+                print(f"🤝 COMMISSION: {new_user_id} earned {reward} → {referrer_id} gets {commission:.2f} Rs")
         except Exception as e:
             print(f"⚠️ Commission error: {e}")
 
@@ -170,12 +166,11 @@ class SupabaseDB:
                     break
                 all_users.extend([user["user_id"] for user in response.data])
                 offset += batch_size
-                print(f"📊 Loaded {len(all_users)} active users...")
             
-            print(f"✅ Total active users: {len(all_users)}")
+            print(f"✅ Active users: {len(all_users)}")
             return all_users
         except Exception as e:
-            print(f"❌ Error loading active users: {e}")
+            print(f"❌ Error: {e}")
             return []
 
     async def get_all_user_ids(self) -> list:
@@ -190,20 +185,21 @@ class SupabaseDB:
                     break
                 all_users.extend([user["user_id"] for user in response.data])
                 offset += batch_size
-                print(f"📊 Loaded {len(all_users)} users...")
             
             print(f"✅ Total users: {len(all_users)}")
             return all_users
         except Exception as e:
-            print(f"❌ Error loading users: {e}")
+            print(f"❌ Error: {e}")
             return []
 
     async def delete_user(self, user_id: int) -> bool:
+        """Delete user BUT do NOT update total_users count (for trust)"""
         try:
             self.client.table("users").delete().eq("user_id", user_id).execute()
             self.client.table("referral_history").delete().eq("new_user_id", user_id).execute()
             self.client.table("referral_history").delete().eq("referrer_id", user_id).execute()
-            print(f"🧹 DELETED user {user_id}")
+            print(f"🧹 DELETED user {user_id} (total_users count unchanged for trust)")
+            # NOTE: total_users NOT decreased (count stays same)
             return True
         except:
             return False
@@ -224,15 +220,12 @@ class SupabaseDB:
                 offset += batch_size
             
             total_users = len(all_users)
-            print(f"✅ Global Stats: {total_users} users, ₹{total_balance:.1f} total balance")
             return {"total_users": total_users, "total_balance": total_balance}
         except Exception as e:
-            print(f"❌ Error getting global stats: {e}")
+            print(f"❌ Error: {e}")
             return {"total_users": 0, "total_balance": 0.0}
 
-    # MISSING METHOD - NEEDED FOR extra_handler.py
     async def get_user_stats(self, user_id: int) -> dict:
-        """Get user stats for extra handler"""
         try:
             user = await self.get_user(user_id)
             if not user:
@@ -248,5 +241,17 @@ class SupabaseDB:
             }
         except:
             return {"total_earned": 0.0, "total_withdrawn": 0.0, "referrals": 0}
+
+    # NEW - Read from stats table (INSTANT, no calculation)
+    async def get_total_user_count(self) -> int:
+        """Get total user count from stats table - INSTANT"""
+        try:
+            response = self.client.table("bot_stats").select("total_users").eq("id", 1).execute()
+            if response.data:
+                return int(response.data[0]["total_users"])
+            return 0
+        except Exception as e:
+            print(f"⚠️ Stats error: {e}")
+            return 0
 
 db = SupabaseDB()
