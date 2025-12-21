@@ -3,16 +3,24 @@ from telegram.ext import ContextTypes, MessageHandler, filters
 from utils.supabase import db
 
 async def extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Extra info page with links and stats"""
+    """Extra info page - FAST & COMPACT with total users"""
     user_id = update.effective_user.id
-    user_stats = await db.get_user_stats(user_id)
     
-    total_earned = user_stats["total_earned"]
-    total_withdrawn = user_stats["total_withdrawn"]
-    referrals = user_stats.get("referrals", 0)
+    # Fetch user stats (no logs)
+    user = await db.get_user(user_id)
+    if not user:
+        await update.message.reply_text(
+            "❌ <b>User not found!</b>",
+            parse_mode='HTML'
+        )
+        return
     
-    # Global stats
-    global_stats = await db.get_global_stats()
+    balance = float(user.get("balance", 0))
+    referrals = int(user.get("referrals", 0))
+    
+    # Get total users count (fast, no logs)
+    all_users = await db.get_all_user_ids()
+    total_users = len(all_users)
     
     keyboard = [
         [InlineKeyboardButton("📢 Channel", url="https://t.me/CashyAds")],
@@ -23,13 +31,10 @@ async def extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"➡️ <b>EXTRA INFO</b>\n\n"
         f"👤 <b>Your Stats:</b>\n"
-        f"💰 <b>Current Balance:</b> ₹{total_earned:.1f}\n"
-        f"👥 <b>Referrals:</b> {referrals}\n"
-        f"💸 <b>Total Withdrawn:</b> ₹{total_withdrawn:.1f}\n\n"
-        
+        f"💰 Balance: ₹{balance:.1f}\n"
+        f"👥 Referrals: {referrals}\n\n"
         f"📊 <b>Bot Stats:</b>\n"
-        f"👥 <b>Total Users:</b> {global_stats['total_users']:,}\n"
-        f"💎 <b>Total Balance:</b> ₹{global_stats['total_balance']:.1f}\n\n"
+        f"👥 Total Users: {total_users:,}\n\n"
         f"📢 <b>Official Links:</b>",
         reply_markup=reply_markup,
         parse_mode='HTML'
