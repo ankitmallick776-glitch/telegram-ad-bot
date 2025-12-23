@@ -204,34 +204,54 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
             
+            # ============================================
             # 1 minute passed - complete all tasks
-            user_tasks = await db.get_user_daily_tasks(user_id)
-            tasks_done = user_tasks.get("tasks_completed", 0)
-            
-            # Add final task reward
-            user = await db.get_user(user_id)
-            new_balance = float(user.get("balance", 0)) + TOTAL_REWARD
-            
-            # ✅ FIXED - Add await
-            await db.client.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
-            
-            # Add 5% commission to referrer
-            await db.add_referral_commission(user_id, TOTAL_REWARD)
-            
-            # Reset daily tasks
-            await db.create_or_update_daily_task(user_id, MAX_TASKS, 0)
-            
-            # Clear flags
-            context.user_data['waiting_for_final_task'] = False
-            context.user_data['final_task_start_time'] = None
-            
-            await update.message.reply_text(
-                f"🎉 <b>ALL TASKS COMPLETED!</b>\n\n"
-                f"💰 <b>+100 Rs added to main balance!</b>\n"
-                f"💳 <b>Your new balance: {new_balance:.1f} Rs</b>\n\n"
-                f"✨ <b>Come back tomorrow for more tasks!</b>",
-                parse_mode='HTML'
-            )
+            # ============================================
+            try:
+                # Get user current balance
+                user = await db.get_user(user_id)
+                current_balance = float(user.get("balance", 0))
+                new_balance = current_balance + TOTAL_REWARD
+                
+                # Update balance in database (NO AWAIT - direct Supabase call)
+                db.client.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
+                print(f"💰 User {user_id}: Task reward +{TOTAL_REWARD} = {new_balance}")
+                
+                # Add 5% commission to referrer (if exists)
+                referral_response = db.client.table("referral_history").select("referrer_id").eq("new_user_id", user_id).execute()
+                if referral_response.data:
+                    referrer_id = referral_response.data[0]["referrer_id"]
+                    commission = TOTAL_REWARD * 0.05
+                    referrer = await db.get_user(referrer_id)
+                    referrer_balance = float(referrer.get("balance", 0))
+                    new_referrer_balance = referrer_balance + commission
+                    db.client.table("users").update({"balance": new_referrer_balance}).eq("user_id", referrer_id).execute()
+                    print(f"🤝 COMMISSION: {user_id} earned {TOTAL_REWARD} → {referrer_id} gets {commission:.2f} Rs")
+                
+                # Reset daily tasks
+                await db.create_or_update_daily_task(user_id, MAX_TASKS, 0)
+                
+                # Clear flags
+                context.user_data['waiting_for_final_task'] = False
+                context.user_data['final_task_start_time'] = None
+                
+                await update.message.reply_text(
+                    f"🎉 <b>ALL TASKS COMPLETED!</b>\n\n"
+                    f"💰 <b>+100 Rs added to main balance!</b>\n"
+                    f"💳 <b>Your new balance: {new_balance:.1f} Rs</b>\n\n"
+                    f"✨ <b>Come back tomorrow for more tasks!</b>",
+                    parse_mode='HTML'
+                )
+                
+                print(f"✅ User {user_id} completed all 4 tasks! Balance: {new_balance}")
+                
+            except Exception as e:
+                print(f"❌ Task completion error: {e}")
+                await update.message.reply_text(
+                    f"❌ <b>Error completing task!</b>\n\n"
+                    f"Please try again.",
+                    parse_mode='HTML'
+                )
         else:
             await update.message.reply_text(
                 "⏱️ <b>Task is running...</b>\n\n"
