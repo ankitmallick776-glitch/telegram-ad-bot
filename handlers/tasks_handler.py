@@ -212,6 +212,7 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user = await db.get_user(user_id)
             new_balance = float(user.get("balance", 0)) + TOTAL_REWARD
             
+            # ✅ FIXED - Add await
             await db.client.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
             
             # Add 5% commission to referrer
