@@ -340,8 +340,8 @@ class SupabaseDB:
         except Exception as e:
             print(f"❌ Task update error: {e}")
 
-    async def check_task_code(self, code: str) -> dict:
-        """Verify task code (task 1-3 only)"""
+    async def check_task_code(self, code: str, user_id: int) -> dict:
+        """Verify task code - per-user one-time use"""
         try:
             today = date.today().isoformat()
             response = self.client.table("daily_task_codes").select("*").eq("secret_code", code).eq("created_date", today).execute()
@@ -350,27 +350,32 @@ class SupabaseDB:
                 return {"valid": False, "reason": "Code not found"}
             
             code_data = response.data[0]
+            code_id = code_data["id"]
             
-            if code_data.get("used_by_user"):
-                return {"valid": False, "reason": "Code already used"}
+            # Check if THIS USER already used THIS CODE
+            usage_response = self.client.table("task_code_usage").select("id").eq("code_id", code_id).eq("user_id", user_id).execute()
+            
+            if usage_response.data:
+                return {"valid": False, "reason": "You already used this code"}
             
             return {
                 "valid": True,
                 "task_number": code_data["task_number"],
-                "code_id": code_data["id"]
+                "code_id": code_id
             }
         except Exception as e:
             print(f"⚠️ Code check error: {e}")
             return {"valid": False, "reason": "Error checking code"}
 
     async def mark_code_used(self, code_id: int, user_id: int):
-        """Mark code as used"""
+        """Mark code as used by this specific user"""
         try:
-            self.client.table("daily_task_codes").update({
-                "used_by_user": user_id,
+            self.client.table("task_code_usage").insert({
+                "code_id": code_id,
+                "user_id": user_id,
                 "used_date": datetime.now().isoformat()
-            }).eq("id", code_id).execute()
-            print(f"✅ Code marked used by {user_id}")
+            }).execute()
+            print(f"✅ Code {code_id} marked used by user {user_id}")
         except Exception as e:
             print(f"⚠️ Mark code error: {e}")
 
@@ -388,7 +393,7 @@ class SupabaseDB:
                 print("✅ Codes already generated for today")
                 return
             
-            # Delete old codes
+            # Delete old codes (older than today)
             self.client.table("daily_task_codes").delete().lt("created_date", today).execute()
             
             # Generate 3 unique codes
