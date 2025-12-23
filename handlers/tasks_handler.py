@@ -120,7 +120,8 @@ async def submit_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"ℹ️ <b>Instructions:</b>\n"
     msg += f"• Add codes to Monetag links above\n"
     msg += f"• Users will find codes in ads\n"
-    msg += f"• Each code works only 1 time\n"
+    msg += f"• Each user can use each code ONCE\n"
+    msg += f"• Multiple users can use same code\n"
     msg += f"• Codes valid for 24 hours\n"
     msg += f"• Tomorrow new codes will be generated"
     
@@ -137,8 +138,8 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('waiting_for_code'):
         current_task = context.user_data.get('current_task', 1)
         
-        # Verify code
-        code_check = await db.check_task_code(user_input)
+        # Verify code (now includes user_id for per-user tracking)
+        code_check = await db.check_task_code(user_input, user_id)
         
         if not code_check.get("valid"):
             await update.message.reply_text(
@@ -149,7 +150,7 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
-        # Code valid - mark as used
+        # Code valid - mark as used BY THIS USER
         code_id = code_check.get("code_id")
         task_number = code_check.get("task_number")
         
