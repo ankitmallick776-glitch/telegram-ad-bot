@@ -4,16 +4,19 @@ from utils.supabase import db
 from utils.rewards import generate_reward
 import os
 from datetime import date
+import json
 
 def get_main_keyboard():
     keyboard = [
         [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
         [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
-        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Extra ➡️")]
+        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Tasks 📋")],
+        [KeyboardButton("Extra ➡️")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generic /start handler (no referral)"""
     user_id = update.effective_user.id
     username = update.effective_user.username or "User"
     
@@ -23,7 +26,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎉 <b>Welcome to Cashyads2!</b>\n\n"
         "💰 <b>Watch ads → Earn 3-5 Rs each</b>\n"
         "👥 <b>Refer → Earn 40 Rs + 5% commission</b>\n"
-        "🎁 <b>Daily bonus: 5 Rs (once/day)</b>",
+        "🎁 <b>Daily bonus: 5 Rs (once/day)</b>\n"
+        "📋 <b>Daily tasks: 100 Rs (4 tasks)</b>",
         reply_markup=get_main_keyboard(),
         parse_mode='HTML'
     )
@@ -68,25 +72,30 @@ async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎉 <b>Welcome to Cashyads2!</b>\n\n"
         "💰 <b>Watch ads → Earn 3-5 Rs each</b>\n"
         "👥 <b>Refer → Earn 40 Rs + 5% commission</b>\n"
-        "🎁 <b>Daily bonus: 5 Rs (once/day)</b>",
+        "🎁 <b>Daily bonus: 5 Rs (once/day)</b>\n"
+        "📋 <b>Daily tasks: 100 Rs (4 tasks)</b>",
         reply_markup=get_main_keyboard(),
         parse_mode='HTML'
     )
 
 async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle mini app ad completion - SIMPLE"""
+    """Handle mini app ad completion"""
     user_id = update.effective_user.id
     data = update.effective_message.web_app_data.data
     
     print(f"🌐 WEBDATA: {data}")
     
-    if "ad_completed" in data:
+    try:
+        data_json = json.loads(data)
+    except:
+        data_json = {}
+    
+    if data_json.get("ad_completed"):
+        # Regular ad reward
         reward = generate_reward()
         await db.add_balance(user_id, reward)
-        balance = await db.get_balance(user_id)
-        
-        # Add 5% commission to referrer (if exists)
         await db.add_referral_commission(user_id, reward)
+        balance = await db.get_balance(user_id)
         
         await update.message.reply_text(
             f"✅ <b>Ad watched successfully!</b>\n"
@@ -103,6 +112,7 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show balance"""
     user_id = update.effective_user.id
     balance_amt = await db.get_balance(user_id)
     
@@ -117,6 +127,7 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def bonus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Claim daily bonus"""
     user_id = update.effective_user.id
     
     if await db.give_daily_bonus(user_id):
@@ -136,6 +147,7 @@ async def bonus(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show referral info"""
     user_id = update.effective_user.id
     user = await db.get_user(user_id)
     
@@ -171,6 +183,7 @@ async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def withdraw_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show withdrawal payment methods"""
     query = update.callback_query
     await query.answer()
     
@@ -192,6 +205,7 @@ async def withdraw_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process withdrawal request"""
     query = update.callback_query
     await query.answer()
     
@@ -236,6 +250,7 @@ async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
 
 async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Confirm withdrawal and ask for payment details"""
     query = update.callback_query
     await query.answer()
     
@@ -355,6 +370,9 @@ async def handle_payment_details(update: Update, context: ContextTypes.DEFAULT_T
     
     admin_id = int(os.getenv("ADMIN_ID", "7836675446"))
     try:
+        # Escape payment details to avoid HTML parsing errors
+        escaped_details = payment_details.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        
         await context.bot.send_message(
             admin_id,
             f"💳 <b>NEW WITHDRAWAL!</b>\n\n"
@@ -362,7 +380,7 @@ async def handle_payment_details(update: Update, context: ContextTypes.DEFAULT_T
             f"💰 <b>Amount:</b> ₹{amount:.1f}\n"
             f"💳 <b>Method:</b> {method}\n"
             f"📄 <b>Payment Details:</b>\n"
-            f"<code>{payment_details}</code>\n\n"
+            f"<code>{escaped_details}</code>\n\n"
             f"📅 {date.today()}",
             parse_mode='HTML'
         )
@@ -373,6 +391,7 @@ async def handle_payment_details(update: Update, context: ContextTypes.DEFAULT_T
     context.user_data.clear()
 
 async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Go back to balance"""
     query = update.callback_query
     await query.answer()
     
@@ -390,6 +409,7 @@ async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def back_methods(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Go back to payment methods"""
     query = update.callback_query
     await query.answer()
     
