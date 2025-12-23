@@ -45,11 +45,15 @@ async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton(f"🔗 Open Task {next_task}", url=task_url)]
         ])
         
+        # Set flag that user is expecting code
+        context.user_data['waiting_for_code'] = True
+        context.user_data['current_task'] = next_task
+        
         await update.message.reply_text(
             f"📋 <b>Task {next_task}/4</b>\n\n"
             f"💰 <b>Reward:</b> +25 Rs\n"
             f"🔑 <b>Find the secret code in the ad</b>\n"
-            f"📝 <b>Type the code to complete task</b>\n\n"
+            f"📝 <b>Type the code here to complete task</b>\n\n"
             f"👇 Click to open ad:",
             reply_markup=keyboard,
             parse_mode='HTML'
@@ -62,11 +66,15 @@ async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("✅ Complete Final Task", url=final_url)]
         ])
         
+        # Mark task 4 as in progress
+        context.user_data['waiting_for_final_task'] = True
+        context.user_data['final_task_start_time'] = datetime.now()
+        
         await update.message.reply_text(
             f"📋 <b>Final Task 4/4</b>\n\n"
             f"💰 <b>Reward:</b> +25 Rs\n"
             f"⏰ <b>Click below to complete</b>\n"
-            f"⏱️ <b>Wait 1 minute, then you'll get your reward!</b>\n\n"
+            f"⏱️ <b>Wait 1 minute, then type 'done' in chat</b>\n\n"
             f"👇 Click to complete:",
             reply_markup=keyboard,
             parse_mode='HTML'
@@ -119,87 +127,117 @@ async def submit_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Verify code from user"""
+    """Verify code from user - MAIN CODE HANDLER"""
     user_id = update.effective_user.id
     user_input = update.message.text.strip().upper()
     
-    # Check if user has active task session
-    if 'expecting_code' not in context.user_data or not context.user_data['expecting_code']:
+    # ============================================
+    # Check if waiting for code (Task 1-3)
+    # ============================================
+    if context.user_data.get('waiting_for_code'):
+        current_task = context.user_data.get('current_task', 1)
+        
+        # Verify code
+        code_check = await db.check_task_code(user_input)
+        
+        if not code_check.get("valid"):
+            await update.message.reply_text(
+                f"❌ <b>Invalid code!</b>\n\n"
+                f"❌ {code_check.get('reason')}\n\n"
+                f"💡 Make sure you copied the code correctly from the ad.",
+                parse_mode='HTML'
+            )
+            return
+        
+        # Code valid - mark as used
+        code_id = code_check.get("code_id")
+        task_number = code_check.get("task_number")
+        
+        await db.mark_code_used(code_id, user_id)
+        
+        # Update user progress
+        user_tasks = await db.get_user_daily_tasks(user_id)
+        tasks_done = user_tasks.get("tasks_completed", 0) + 1
+        pending = tasks_done * TASK_REWARD_PER_TASK
+        
+        await db.create_or_update_daily_task(user_id, tasks_done, pending)
+        
+        # Clear waiting flag
+        context.user_data['waiting_for_code'] = False
+        
+        # Show completion message
+        total_completed = tasks_done
+        total_progress = f"{total_completed * TASK_REWARD_PER_TASK:.0f}/{TOTAL_REWARD:.0f} Rs"
+        
+        if total_completed < MAX_TASKS:
+            await update.message.reply_text(
+                f"✅ <b>Task {total_completed}/4 completed!</b>\n\n"
+                f"💰 <b>+25 Rs earned with this task</b>\n"
+                f"📊 <b>Total progress: {total_progress}</b>\n\n"
+                f"💡 <b>Complete all tasks to get rewarded!</b>\n\n"
+                f"👇 Click Tasks button for next task:",
+                parse_mode='HTML'
+            )
+        
         return
     
-    # Verify code
-    code_check = await db.check_task_code(user_input)
-    
-    if not code_check.get("valid"):
-        await update.message.reply_text(
-            f"❌ <b>Invalid code!</b>\n\n"
-            f"❌ {code_check.get('reason')}\n\n"
-            f"💡 Make sure you copied the code correctly from the ad.",
-            parse_mode='HTML'
-        )
+    # ============================================
+    # Check if waiting for final task completion
+    # ============================================
+    if context.user_data.get('waiting_for_final_task'):
+        if user_input == 'DONE':
+            # Check if 1 minute has passed
+            start_time = context.user_data.get('final_task_start_time')
+            if not start_time:
+                await update.message.reply_text(
+                    "❌ <b>Please click the task link first!</b>",
+                    parse_mode='HTML'
+                )
+                return
+            
+            elapsed = (datetime.now() - start_time).total_seconds()
+            if elapsed < 60:
+                remaining = 60 - int(elapsed)
+                await update.message.reply_text(
+                    f"⏳ <b>Please wait {remaining} more seconds...</b>",
+                    parse_mode='HTML'
+                )
+                return
+            
+            # 1 minute passed - complete all tasks
+            user_tasks = await db.get_user_daily_tasks(user_id)
+            tasks_done = user_tasks.get("tasks_completed", 0)
+            
+            # Add final task reward
+            user = await db.get_user(user_id)
+            new_balance = float(user.get("balance", 0)) + TOTAL_REWARD
+            
+            await db.client.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
+            
+            # Add 5% commission to referrer
+            await db.add_referral_commission(user_id, TOTAL_REWARD)
+            
+            # Reset daily tasks
+            await db.create_or_update_daily_task(user_id, MAX_TASKS, 0)
+            
+            # Clear flags
+            context.user_data['waiting_for_final_task'] = False
+            context.user_data['final_task_start_time'] = None
+            
+            await update.message.reply_text(
+                f"🎉 <b>ALL TASKS COMPLETED!</b>\n\n"
+                f"💰 <b>+100 Rs added to main balance!</b>\n"
+                f"💳 <b>Your new balance: {new_balance:.1f} Rs</b>\n\n"
+                f"✨ <b>Come back tomorrow for more tasks!</b>",
+                parse_mode='HTML'
+            )
+        else:
+            await update.message.reply_text(
+                "⏱️ <b>Task is running...</b>\n\n"
+                "Type 'done' when you finish the task.",
+                parse_mode='HTML'
+            )
         return
-    
-    # Code valid - mark as used
-    code_id = code_check.get("code_id")
-    task_number = code_check.get("task_number")
-    
-    await db.mark_code_used(code_id, user_id)
-    
-    # Update user progress
-    user_tasks = await db.get_user_daily_tasks(user_id)
-    tasks_done = user_tasks.get("tasks_completed", 0) + 1
-    pending = tasks_done * TASK_REWARD_PER_TASK
-    
-    await db.create_or_update_daily_task(user_id, tasks_done, pending)
-    
-    # Show completion message
-    total_completed = tasks_done
-    total_progress = f"{total_completed * TASK_REWARD_PER_TASK:.0f}/{TOTAL_REWARD:.0f} Rs"
-    
-    if total_completed < MAX_TASKS:
-        await update.message.reply_text(
-            f"✅ <b>Task {total_completed}/4 completed!</b>\n\n"
-            f"💰 <b>+25 Rs earned with this task</b>\n"
-            f"📊 <b>Total progress: {total_progress}</b>\n\n"
-            f"💡 <b>Complete all tasks to get rewarded!</b>\n\n"
-            f"👇 Click Tasks button for next task:",
-            parse_mode='HTML'
-        )
-        context.user_data['expecting_code'] = False
-    
-    else:
-        # All tasks done - wait 1 min then complete
-        await update.message.reply_text(
-            f"✅ <b>Task 4/4 submitted!</b>\n\n"
-            f"⏱️ <b>Verifying... (waiting 1 minute)</b>\n"
-            f"💤 Please wait...",
-            parse_mode='HTML'
-        )
-        
-        # Wait 1 minute
-        await asyncio.sleep(60)
-        
-        # Complete tasks and add reward
-        user = await db.get_user(user_id)
-        new_balance = float(user.get("balance", 0)) + TOTAL_REWARD
-        
-        await db.client.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
-        
-        # Add 5% commission to referrer
-        await db.add_referral_commission(user_id, TOTAL_REWARD)
-        
-        # Reset daily tasks
-        await db.create_or_update_daily_task(user_id, MAX_TASKS, 0)
-        
-        await update.message.reply_text(
-            f"🎉 <b>ALL TASKS COMPLETED!</b>\n\n"
-            f"💰 <b>+100 Rs added to main balance!</b>\n"
-            f"💳 <b>Your new balance: {new_balance:.1f} Rs</b>\n\n"
-            f"✨ <b>Come back tomorrow for more tasks!</b>",
-            parse_mode='HTML'
-        )
-        
-        context.user_data['expecting_code'] = False
 
 # Handler for tasks button
 tasks_handler = MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks)
@@ -207,5 +245,8 @@ tasks_handler = MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks)
 # Handler for /code command (admin)
 code_command = CommandHandler("code", submit_code)
 
-# Handler for code submission
-code_submit = MessageHandler(filters.TEXT & ~filters.COMMAND, verify_task_code)
+# Handler for code/task submission - MUST BE LAST IN CHAIN
+code_submit = MessageHandler(
+    filters.TEXT & ~filters.COMMAND & ~filters.Regex("^(Watch Ads 💰|Balance 💳|Bonus 🎁|Refer and Earn 👥|Tasks 📋|Extra ➡️)$"),
+    verify_task_code
+)
