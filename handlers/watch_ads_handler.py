@@ -329,18 +329,21 @@ async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
 
 async def handle_payment_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Process payment details and complete withdrawal"""
+    """Process payment details - ONLY if withdrawal active"""
     user_id = update.effective_user.id
     payment_details = update.message.text
     
-    # 🔧 FIX: ONLY process if withdrawal is active
+    # 🔧 CRITICAL: Only process if we're ACTUALLY waiting for withdrawal
     if 'withdrawal_method' not in context.user_data:
-        return  # ← NOT a withdrawal, pass to next handler
+        # NOT a withdrawal - let task handler have it
+        return
     
-    # Continue with rest of function...
+    # ========== BELOW THIS POINT = WITHDRAWAL ONLY ==========
+    
     method = context.user_data['withdrawal_method']
     amount = context.user_data['withdrawal_amount']
     
+    # ✅ CONSUME THE MESSAGE (no more returns)
     await db.add_balance(user_id, -amount)
     
     await update.message.reply_text(
@@ -399,8 +402,8 @@ async def handle_payment_details(update: Update, context: ContextTypes.DEFAULT_T
     except Exception as e:
         print(f"⚠️ Admin notification failed: {e}")
     
-    context.user_data.clear()
-
+    context.user_data.clear()  # ✅ Clears withdrawal flags
+    
 async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Go back to balance"""
     query = update.callback_query
