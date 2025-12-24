@@ -130,21 +130,29 @@ async def submit_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    ✅ CORRECT FIX: Check database FIRST, not flags
-    Verify if text is a valid code in database, then process
-    """
+    """Verify code from user - SIMPLE & WORKING"""
     user_id = update.effective_user.id
     user_input = update.message.text.strip().upper()
     
-    # 🔧 FIX: Check database FIRST (not flag)
-    code_check = await db.check_task_code(user_input, user_id)
-    
-    # If it's a VALID CODE, process it regardless of flag
-    if code_check.get("valid"):
-        # ✅ THIS IS A VALID CODE - PROCESS IT
+    # ============================================
+    # CHECK IF WAITING FOR CODE (Task 1-3)
+    # ============================================
+    if context.user_data.get('waiting_for_code'):
+        # User clicked Tasks, verify their input is a valid code
+        code_check = await db.check_task_code(user_input, user_id)
+        
+        if not code_check.get("valid"):
+            # Invalid code
+            await update.message.reply_text(
+                f"❌ Invalid code!\n\n"
+                f"❌ {code_check.get('reason')}\n\n"
+                f"💡 Make sure you copied the code correctly from the ad.",
+                parse_mode='HTML'
+            )
+            return  # ← MESSAGE CONSUMED
+        
+        # ✅ CODE IS VALID - PROCESS IT
         code_id = code_check.get("code_id")
-        task_number = code_check.get("task_number")
         await db.mark_code_used(code_id, user_id)
         
         # Update user progress
@@ -157,16 +165,15 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pending = tasks_done * TASK_REWARD_PER_TASK
         await db.create_or_update_daily_task(user_id, tasks_done, pending)
         
-        # Clear waiting flag
+        # Clear flag
         context.user_data['waiting_for_code'] = False
         
-        # Show completion message
-        total_completed = tasks_done
-        total_progress = f"{total_completed * TASK_REWARD_PER_TASK:.0f}/{TOTAL_REWARD:.0f} Rs"
+        # Show completion
+        total_progress = f"{tasks_done * TASK_REWARD_PER_TASK:.0f}/{TOTAL_REWARD:.0f} Rs"
         
-        if total_completed < MAX_TASKS:
+        if tasks_done < MAX_TASKS:
             await update.message.reply_text(
-                f"✅ Task {total_completed}/4 completed!\n\n"
+                f"✅ Task {tasks_done}/4 completed!\n\n"
                 f"💰 +25 Rs earned with this task\n"
                 f"📊 Total progress: {total_progress}\n\n"
                 f"💡 Complete all tasks to get rewarded!\n\n"
@@ -175,22 +182,11 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return  # ← MESSAGE CONSUMED
     
-    # ❌ NOT A VALID CODE
-    if context.user_data.get('waiting_for_code'):
-        # User clicked Tasks, we showed them "Type code here"
-        # They typed something but it's not valid
-        await update.message.reply_text(
-            f"❌ Invalid code!\n\n"
-            f"❌ {code_check.get('reason')}\n\n"
-            f"💡 Make sure you copied the code correctly from the ad.",
-            parse_mode='HTML'
-        )
-        return  # ← MESSAGE CONSUMED
-    
-    # Check final task completion
+    # ============================================
+    # CHECK IF WAITING FOR FINAL TASK
+    # ============================================
     if context.user_data.get('waiting_for_final_task'):
         if user_input == 'DONE':
-            # Check if 1 minute has passed
             start_time = context.user_data.get('final_task_start_time')
             
             if not start_time:
@@ -210,7 +206,7 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
             
-            # ✅ 1 minute passed - complete all tasks
+            # ✅ 1 MINUTE PASSED - COMPLETE ALL TASKS
             try:
                 user = await db.get_user(user_id)
                 current_balance = float(user.get("balance", 0))
@@ -219,6 +215,7 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db.client.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
                 print(f"💰 User {user_id}: Task reward +{TOTAL_REWARD} = {new_balance}")
                 
+                # Add commission to referrer
                 referral_response = db.client.table("referral_history").select("referrer_id").eq("new_user_id", user_id).execute()
                 
                 if referral_response.data:
@@ -230,6 +227,7 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     db.client.table("users").update({"balance": new_referrer_balance}).eq("user_id", referrer_id).execute()
                     print(f"🤝 COMMISSION: {user_id} earned {TOTAL_REWARD} → {referrer_id} gets {commission:.2f} Rs")
                 
+                # Reset tasks
                 await db.create_or_update_daily_task(user_id, MAX_TASKS, 0)
                 
                 context.user_data['waiting_for_final_task'] = False
@@ -261,8 +259,11 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return  # ← MESSAGE CONSUMED
     
-    # Not a code AND not waiting for code/final task
-    # → LET PAYMENT HANDLER HAVE THIS MESSAGE
+    # ============================================
+    # NOT A TASK - PASS TO PAYMENT HANDLER
+    # ============================================
+    # User typed something but not waiting for code/task
+    # → Let payment handler check if it's withdrawal
     return  # ← MESSAGE NOT CONSUMED
 
 # Handler for tasks button
