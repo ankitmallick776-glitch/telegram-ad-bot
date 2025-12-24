@@ -264,10 +264,11 @@ async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     
-    # 🔧 FIX: Clear task flags to prevent interference with withdrawal
+    # 🔧 FIX: Clear task flags AND set withdrawal flag
     context.user_data['waiting_for_code'] = False
     context.user_data['waiting_for_final_task'] = False
     context.user_data['final_task_start_time'] = None
+    context.user_data['waiting_for_withdrawal'] = True  # ← ADD THIS
     
     user_id = query.from_user.id
     method = query.data.split("_")[2].upper()
