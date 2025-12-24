@@ -46,17 +46,14 @@ async def main():
     app.add_error_handler(error_handler)
     
     # ============================================
-    # COMMAND HANDLERS
+    # COMMAND HANDLERS (FIRST)
     # ============================================
-    # /start with referral code (MUST BE FIRST - with args)
     app.add_handler(CommandHandler("start", start_referral, filters.Regex(".*"), has_args=True))
-    # /code command (admin)
     app.add_handler(code_command)
-    # Generic /start (no args) - LAST before message handlers
     app.add_handler(CommandHandler("start", start))
     
     # ============================================
-    # MAIN BUTTONS - SPECIFIC FIRST (MUST BE BEFORE TASKS)
+    # MAIN BUTTONS (SECOND)
     # ============================================
     app.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
     app.add_handler(MessageHandler(filters.Regex("^(Bonus 🎁)$"), bonus))
@@ -64,21 +61,21 @@ async def main():
     app.add_handler(MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks_handler.callback))
     app.add_handler(MessageHandler(filters.Regex("^(Extra ➡️)$"), extra_handler.callback))
     
-    # Web app data (ads completion)
+    # Web app data
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
     
     # ============================================
-    # CRITICAL: PAYMENT HANDLER BEFORE TASK CODE (FIX #1)
+    # TASK CODE HANDLER (THIRD - BEFORE PAYMENT)
+    # ============================================
+    app.add_handler(code_submit)
+    
+    # ============================================
+    # PAYMENT HANDLER (FOURTH)
     # ============================================
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & ~filters.Regex("^(Watch Ads 💰|Balance 💳|Bonus 🎁|Refer and Earn 👥|Tasks 📋|Extra ➡️)$"),
         handle_payment_details
     ))
-    
-    # ============================================
-    # TASK CODE HANDLER - AFTER PAYMENT (FIX #2)
-    # ============================================
-    app.add_handler(code_submit)
     
     # ============================================
     # CALLBACK HANDLERS
@@ -89,26 +86,18 @@ async def main():
     app.add_handler(CallbackQueryHandler(back_methods, pattern="^back_methods$"))
     app.add_handler(CallbackQueryHandler(back_to_balance, pattern="^back_balance$"))
     
-    # ============================================
-    # ADMIN HANDLERS
-    # ============================================
+    # Admin handlers
     app.add_handler(broadcast_handler)
     app.add_handler(cleanup_handler)
     
     # ============================================
-    # FALLBACK (LAST)
+    # UNKNOWN (LAST - CATCH-ALL)
     # ============================================
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
     
     print("🤖 Cashyads2 FULLY LIVE! ✅")
-    print("=" * 50)
-    print("✅ Command handlers registered")
-    print("✅ Message handlers registered") 
-    print("✅ Callback handlers registered")
-    print("✅ Error handler registered")
-    print("✅ PAYMENT HANDLER FIXED - BEFORE TASK HANDLER")
-    print("=" * 50)
-    
+    print("🎯 PERFECT HANDLER ORDER:")
+    print("1️⃣ Commands → 2️⃣ Buttons → 3️⃣ Task Codes → 4️⃣ Payment → 5️⃣ Unknown")
     await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
