@@ -308,35 +308,23 @@ class SupabaseDB:
                 return response.data[0]
             return None
         except Exception as e:
-            print(f"⚠️ Task error: {e}")
+            print(f"⚠️ Task fetch error: {e}")
             return None
 
     async def create_or_update_daily_task(self, user_id: int, tasks_completed: int = 0, pending_reward: float = 0):
-        """Create or update user's daily task progress"""
+        """Create or update user's daily task progress - UPSERT (no duplicate errors)"""
         try:
             today = date.today().isoformat()
             
-            # Check if exists
-            existing = await self.get_user_daily_tasks(user_id)
-            
-            if existing:
-                # Update
-                self.client.table("daily_tasks").update({
-                    "tasks_completed": tasks_completed,
-                    "pending_reward": pending_reward,
-                    "last_task_time": datetime.now().isoformat()
-                }).eq("user_id", user_id).eq("task_date", today).execute()
-                print(f"📋 Updated tasks for {user_id}: {tasks_completed}/4 complete, {pending_reward} Rs pending")
-            else:
-                # Create
-                self.client.table("daily_tasks").insert({
-                    "user_id": user_id,
-                    "task_date": today,
-                    "tasks_completed": tasks_completed,
-                    "pending_reward": pending_reward,
-                    "last_task_time": datetime.now().isoformat()
-                }).execute()
-                print(f"📋 Created tasks for {user_id}")
+            # UPSERT: Update if exists, Insert if not (no duplicate key errors)
+            self.client.table("daily_tasks").upsert({
+                "user_id": user_id,
+                "task_date": today,
+                "tasks_completed": tasks_completed,
+                "pending_reward": pending_reward,
+                "last_task_time": datetime.now().isoformat()
+            }).execute()
+            print(f"📋 Tasks for {user_id}: {tasks_completed}/4 complete, {pending_reward} Rs pending")
         except Exception as e:
             print(f"❌ Task update error: {e}")
 
