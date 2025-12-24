@@ -264,7 +264,7 @@ async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     
-    # 🔧 FIX: Clear task flags AND set withdrawal flag FIRST
+    # 🔧 FIX: Clear task flags to prevent interference with withdrawal
     context.user_data['waiting_for_code'] = False
     context.user_data['waiting_for_final_task'] = False
     context.user_data['final_task_start_time'] = None
@@ -273,7 +273,6 @@ async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
     method = query.data.split("_")[2].upper()
     bal = await db.get_balance(user_id)
     
-    # 🔧 SET WITHDRAWAL METHOD IMMEDIATELY (this is the KEY flag)
     context.user_data['withdrawal_method'] = method
     context.user_data['withdrawal_amount'] = bal
     context.user_data['withdrawal_user_id'] = user_id
