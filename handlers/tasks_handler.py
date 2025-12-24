@@ -20,6 +20,11 @@ async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.create_or_update_daily_task(user_id, 0, 0)
         user_tasks = await db.get_user_daily_tasks(user_id)
     
+    # Safety check - if still None, create default dict
+    if not user_tasks:
+        await db.create_or_update_daily_task(user_id, 0, 0)
+        user_tasks = {"tasks_completed": 0, "pending_reward": 0}
+    
     tasks_done = user_tasks.get("tasks_completed", 0)
     pending = user_tasks.get("pending_reward", 0)
     
@@ -138,7 +143,7 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('waiting_for_code'):
         current_task = context.user_data.get('current_task', 1)
         
-        # Verify code (now includes user_id for per-user tracking)
+        # Verify code (includes user_id for per-user tracking)
         code_check = await db.check_task_code(user_input, user_id)
         
         if not code_check.get("valid"):
@@ -158,7 +163,11 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Update user progress
         user_tasks = await db.get_user_daily_tasks(user_id)
-        tasks_done = user_tasks.get("tasks_completed", 0) + 1
+        if user_tasks:
+            tasks_done = user_tasks.get("tasks_completed", 0) + 1
+        else:
+            tasks_done = 1
+        
         pending = tasks_done * TASK_REWARD_PER_TASK
         
         await db.create_or_update_daily_task(user_id, tasks_done, pending)
@@ -229,7 +238,7 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     db.client.table("users").update({"balance": new_referrer_balance}).eq("user_id", referrer_id).execute()
                     print(f"🤝 COMMISSION: {user_id} earned {TOTAL_REWARD} → {referrer_id} gets {commission:.2f} Rs")
                 
-                # Reset daily tasks
+                # Reset daily tasks to completed
                 await db.create_or_update_daily_task(user_id, MAX_TASKS, 0)
                 
                 # Clear flags
@@ -267,7 +276,7 @@ tasks_handler = MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks)
 # Handler for /code command (admin)
 code_command = CommandHandler("code", submit_code)
 
-# Handler for code/task submission - MUST BE LAST IN CHAIN
+# Handler for code/task submission
 code_submit = MessageHandler(
     filters.TEXT & ~filters.COMMAND & ~filters.Regex("^(Watch Ads 💰|Balance 💳|Bonus 🎁|Refer and Earn 👥|Tasks 📋|Extra ➡️)$"),
     verify_task_code
