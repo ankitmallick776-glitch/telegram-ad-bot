@@ -47,7 +47,7 @@ async def main():
     app.add_handler(code_command)
     app.add_handler(CommandHandler("start", start))
     
-    # Buttons
+    # Main buttons
     app.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
     app.add_handler(MessageHandler(filters.Regex("^(Bonus 🎁)$"), bonus))
     app.add_handler(MessageHandler(filters.Regex("^(Refer and Earn 👥)$"), refer))
@@ -57,13 +57,13 @@ async def main():
     # Web app
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
     
-    # ✅ PAYMENT FIRST (checks withdrawal_method flag)
+    # ✅ PAYMENT HANDLER FIRST (checks withdrawal_method flag)
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & ~filters.Regex("^(Watch Ads 💰|Balance 💳|Bonus 🎁|Refer and Earn 👥|Tasks 📋|Extra ➡️)$"),
         handle_payment_details
     ))
     
-    # ✅ TASK SECOND (checks waiting_for_code flag)
+    # ✅ TASK HANDLER SECOND (if payment doesn't consume, task processes)
     app.add_handler(code_submit)
     
     # Callbacks
@@ -81,8 +81,6 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
     
     print("🤖 Cashyads2 FULLY LIVE! ✅")
-    print("✅ Withdrawal: Checks withdrawal_method flag")
-    print("✅ Tasks: Checks waiting_for_code flag")
     await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
