@@ -187,6 +187,11 @@ async def withdraw_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
+    # 🔧 FIX: Clear task flags to prevent interference with withdrawal
+    context.user_data['waiting_for_code'] = False
+    context.user_data['waiting_for_final_task'] = False
+    context.user_data['final_task_start_time'] = None
+    
     keyboard = [
         [InlineKeyboardButton("💳 Paytm", callback_data="withdraw_paytm")],
         [InlineKeyboardButton("💸 UPI", callback_data="withdraw_upi")],
@@ -208,6 +213,11 @@ async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Process withdrawal request"""
     query = update.callback_query
     await query.answer()
+    
+    # 🔧 FIX: Clear task flags to prevent interference with withdrawal
+    context.user_data['waiting_for_code'] = False
+    context.user_data['waiting_for_final_task'] = False
+    context.user_data['final_task_start_time'] = None
     
     user_id = query.from_user.id
     method = query.data.split("_")[1].upper()
@@ -253,6 +263,11 @@ async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Confirm withdrawal and ask for payment details"""
     query = update.callback_query
     await query.answer()
+    
+    # 🔧 FIX: Clear task flags to prevent interference with withdrawal
+    context.user_data['waiting_for_code'] = False
+    context.user_data['waiting_for_final_task'] = False
+    context.user_data['final_task_start_time'] = None
     
     user_id = query.from_user.id
     method = query.data.split("_")[2].upper()
@@ -395,6 +410,11 @@ async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
+    # 🔧 FIX: Clear task flags when going back to balance
+    context.user_data['waiting_for_code'] = False
+    context.user_data['waiting_for_final_task'] = False
+    context.user_data['final_task_start_time'] = None
+    
     user_id = query.from_user.id
     bal = await db.get_balance(user_id)
     
@@ -412,6 +432,11 @@ async def back_methods(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Go back to payment methods"""
     query = update.callback_query
     await query.answer()
+    
+    # 🔧 FIX: Clear task flags when going back to methods
+    context.user_data['waiting_for_code'] = False
+    context.user_data['waiting_for_final_task'] = False
+    context.user_data['final_task_start_time'] = None
     
     keyboard = [
         [InlineKeyboardButton("💳 Paytm", callback_data="withdraw_paytm")],
