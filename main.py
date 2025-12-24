@@ -78,7 +78,8 @@ async def main():
     # ============================================
     # TASK & CODE HANDLERS (MUST BE BEFORE payment)
     # ============================================
-    app.add_handler(code_submit)  # Code/Task submission - FIRST TEXT HANDLER
+    # Code handler checks context internally - only processes if waiting for code/task
+    app.add_handler(code_submit)
     
     # ============================================
     # PAYMENT DETAILS (CATCH-ALL - LAST)
