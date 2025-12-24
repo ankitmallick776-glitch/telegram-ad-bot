@@ -328,17 +328,17 @@ async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
 
 async def handle_payment_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Process payment details and complete withdrawal"""
+    """Process payment details and complete withdrawal - SKIPS if task active"""
     user_id = update.effective_user.id
     payment_details = update.message.text
     
+    # 🔧 FIX #1: SKIP if task flags are active (let task handler process)
+    if context.user_data.get('waiting_for_code') or context.user_data.get('waiting_for_final_task'):
+        return  # ← PASS TO TASK HANDLER
+    
+    # 🔧 FIX #2: Check withdrawal session AFTER task check
     if 'withdrawal_method' not in context.user_data:
-        await update.message.reply_text(
-            "❌ <b>Session expired!</b>\n\n"
-            "Please start withdrawal again from Balance button.",
-            reply_markup=get_main_keyboard(),
-            parse_mode='HTML'
-        )
+        # Don't consume message - let unknown handler or task handler catch it
         return
     
     method = context.user_data['withdrawal_method']
