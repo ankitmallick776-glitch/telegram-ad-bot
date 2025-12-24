@@ -328,19 +328,15 @@ async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
 
 async def handle_payment_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Process payment details and complete withdrawal - SKIPS if task active"""
+    """Process payment details and complete withdrawal"""
     user_id = update.effective_user.id
     payment_details = update.message.text
     
-    # 🔧 FIX #1: SKIP if task flags are active (let task handler process)
-    if context.user_data.get('waiting_for_code') or context.user_data.get('waiting_for_final_task'):
-        return  # ← PASS TO TASK HANDLER
-    
-    # 🔧 FIX #2: Check withdrawal session AFTER task check
+    # 🔧 FIX: ONLY process if withdrawal is active
     if 'withdrawal_method' not in context.user_data:
-        # Don't consume message - let unknown handler or task handler catch it
-        return
+        return  # ← NOT a withdrawal, pass to next handler
     
+    # Continue with rest of function...
     method = context.user_data['withdrawal_method']
     amount = context.user_data['withdrawal_amount']
     
@@ -385,7 +381,6 @@ async def handle_payment_details(update: Update, context: ContextTypes.DEFAULT_T
     
     admin_id = int(os.getenv("ADMIN_ID", "7836675446"))
     try:
-        # Escape payment details to avoid HTML parsing errors
         escaped_details = payment_details.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         
         await context.bot.send_message(
