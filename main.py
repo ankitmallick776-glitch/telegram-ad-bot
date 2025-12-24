@@ -42,12 +42,16 @@ async def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_error_handler(error_handler)
     
-    # Commands
+    # ============================================
+    # COMMAND HANDLERS
+    # ============================================
     app.add_handler(CommandHandler("start", start_referral, filters.Regex(".*"), has_args=True))
     app.add_handler(code_command)
     app.add_handler(CommandHandler("start", start))
     
-    # Main buttons
+    # ============================================
+    # BUTTON HANDLERS
+    # ============================================
     app.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
     app.add_handler(MessageHandler(filters.Regex("^(Bonus 🎁)$"), bonus))
     app.add_handler(MessageHandler(filters.Regex("^(Refer and Earn 👥)$"), refer))
@@ -57,16 +61,22 @@ async def main():
     # Web app
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
     
-    # ✅ PAYMENT HANDLER FIRST (checks withdrawal_method flag)
+    # ============================================
+    # PAYMENT HANDLER (checks withdrawal_method)
+    # ============================================
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & ~filters.Regex("^(Watch Ads 💰|Balance 💳|Bonus 🎁|Refer and Earn 👥|Tasks 📋|Extra ➡️)$"),
         handle_payment_details
     ))
     
-    # ✅ TASK HANDLER SECOND (if payment doesn't consume, task processes)
+    # ============================================
+    # TASK HANDLER (checks if text IS a valid code)
+    # ============================================
     app.add_handler(code_submit)
     
-    # Callbacks
+    # ============================================
+    # CALLBACK HANDLERS
+    # ============================================
     app.add_handler(CallbackQueryHandler(withdraw_menu, pattern="^withdraw$"))
     app.add_handler(CallbackQueryHandler(process_withdrawal, pattern="^withdraw_"))
     app.add_handler(CallbackQueryHandler(confirm_withdrawal, pattern="^confirm_withdraw_"))
@@ -81,6 +91,7 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
     
     print("🤖 Cashyads2 FULLY LIVE! ✅")
+    print("✅ Tasks & Withdrawals Working Together!")
     await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
