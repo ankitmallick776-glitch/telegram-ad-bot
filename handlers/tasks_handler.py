@@ -133,9 +133,16 @@ async def submit_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Verify code from user - MAIN CODE HANDLER"""
+    """Verify code from user - ONLY IF WAITING FOR CODE/TASK"""
     user_id = update.effective_user.id
     user_input = update.message.text.strip().upper()
+    
+    # ============================================
+    # CRITICAL: Only process if waiting for code or task
+    # ============================================
+    # If not waiting for code or final task, skip (let payment handler catch it)
+    if not context.user_data.get('waiting_for_code') and not context.user_data.get('waiting_for_final_task'):
+        return  # ← EXIT - not a task/code message, pass to next handler
     
     # ============================================
     # Check if waiting for code (Task 1-3)
@@ -276,8 +283,8 @@ tasks_handler = MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks)
 # Handler for /code command (admin)
 code_command = CommandHandler("code", submit_code)
 
-# Handler for code/task submission
+# Handler for code/task submission - checks context internally
 code_submit = MessageHandler(
-    filters.TEXT & ~filters.COMMAND & ~filters.Regex("^(Watch Ads 💰|Balance 💳|Bonus 🎁|Refer and Earn 👥|Tasks 📋|Extra ➡️)$"),
+    filters.TEXT & ~filters.COMMAND,
     verify_task_code
 )
