@@ -142,7 +142,7 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ============================================
     # If not waiting for code or final task, skip (let payment handler catch it)
     if not context.user_data.get('waiting_for_code') and not context.user_data.get('waiting_for_final_task'):
-        return  # ← EXIT - not a task/code message, pass to next handler
+        return # ← EXIT - not a task/code message, pass to next handler
     
     # ============================================
     # Check if waiting for code (Task 1-3)
@@ -155,8 +155,8 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if not code_check.get("valid"):
             await update.message.reply_text(
-                f"❌ <b>Invalid code!</b>\n\n"
-                f"❌ {code_check.get('reason')}\n\n"
+                f"❌ Invalid code!\\n\\n"
+                f"❌ {code_check.get('reason')}\\n\\n"
                 f"💡 Make sure you copied the code correctly from the ad.",
                 parse_mode='HTML'
             )
@@ -165,7 +165,6 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Code valid - mark as used BY THIS USER
         code_id = code_check.get("code_id")
         task_number = code_check.get("task_number")
-        
         await db.mark_code_used(code_id, user_id)
         
         # Update user progress
@@ -176,7 +175,6 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tasks_done = 1
         
         pending = tasks_done * TASK_REWARD_PER_TASK
-        
         await db.create_or_update_daily_task(user_id, tasks_done, pending)
         
         # Clear waiting flag
@@ -188,15 +186,14 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if total_completed < MAX_TASKS:
             await update.message.reply_text(
-                f"✅ <b>Task {total_completed}/4 completed!</b>\n\n"
-                f"💰 <b>+25 Rs earned with this task</b>\n"
-                f"📊 <b>Total progress: {total_progress}</b>\n\n"
-                f"💡 <b>Complete all tasks to get rewarded!</b>\n\n"
+                f"✅ Task {total_completed}/4 completed!\\n\\n"
+                f"💰 +25 Rs earned with this task\\n"
+                f"📊 Total progress: {total_progress}\\n\\n"
+                f"💡 Complete all tasks to get rewarded!\\n\\n"
                 f"👇 Click Tasks button for next task:",
                 parse_mode='HTML'
             )
-        
-        return
+            return
     
     # ============================================
     # Check if waiting for final task completion
@@ -205,18 +202,20 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_input == 'DONE':
             # Check if 1 minute has passed
             start_time = context.user_data.get('final_task_start_time')
+            
             if not start_time:
                 await update.message.reply_text(
-                    "❌ <b>Please click the task link first!</b>",
+                    "❌ Please click the task link first!",
                     parse_mode='HTML'
                 )
                 return
             
             elapsed = (datetime.now() - start_time).total_seconds()
+            
             if elapsed < 60:
                 remaining = 60 - int(elapsed)
                 await update.message.reply_text(
-                    f"⏳ <b>Please wait {remaining} more seconds...</b>",
+                    f"⏳ Please wait {remaining} more seconds...",
                     parse_mode='HTML'
                 )
                 return
@@ -230,12 +229,14 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 current_balance = float(user.get("balance", 0))
                 new_balance = current_balance + TOTAL_REWARD
                 
-                # Update balance in database (NO AWAIT - direct Supabase call)
+                # Update balance in database
                 db.client.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
+                
                 print(f"💰 User {user_id}: Task reward +{TOTAL_REWARD} = {new_balance}")
                 
                 # Add 5% commission to referrer (if exists)
                 referral_response = db.client.table("referral_history").select("referrer_id").eq("new_user_id", user_id).execute()
+                
                 if referral_response.data:
                     referrer_id = referral_response.data[0]["referrer_id"]
                     commission = TOTAL_REWARD * 0.05
@@ -253,10 +254,10 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data['final_task_start_time'] = None
                 
                 await update.message.reply_text(
-                    f"🎉 <b>ALL TASKS COMPLETED!</b>\n\n"
-                    f"💰 <b>+100 Rs added to main balance!</b>\n"
-                    f"💳 <b>Your new balance: {new_balance:.1f} Rs</b>\n\n"
-                    f"✨ <b>Come back tomorrow for more tasks!</b>",
+                    f"🎉 ALL TASKS COMPLETED!\\n\\n"
+                    f"💰 +100 Rs added to main balance!\\n"
+                    f"💳 Your new balance: {new_balance:.1f} Rs\\n\\n"
+                    f"✨ Come back tomorrow for more tasks!",
                     parse_mode='HTML'
                 )
                 
@@ -265,17 +266,17 @@ async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 print(f"❌ Task completion error: {e}")
                 await update.message.reply_text(
-                    f"❌ <b>Error completing task!</b>\n\n"
+                    f"❌ Error completing task!\\n\\n"
                     f"Please try again.",
                     parse_mode='HTML'
                 )
         else:
             await update.message.reply_text(
-                "⏱️ <b>Task is running...</b>\n\n"
+                "⏱️ Task is running...\\n\\n"
                 "Type 'done' when you finish the task.",
                 parse_mode='HTML'
             )
-        return
+            return
 
 # Handler for tasks button
 tasks_handler = MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks)
