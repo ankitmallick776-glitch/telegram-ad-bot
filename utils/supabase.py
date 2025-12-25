@@ -24,6 +24,7 @@ class SupabaseDB:
     # ============================================
     # USER MANAGEMENT
     # ============================================
+
     async def get_user(self, user_id: int):
         """Get user by user_id"""
         try:
@@ -59,9 +60,7 @@ class SupabaseDB:
             "user_id": user_id,
             "balance": 0.0,
             "referrals": 0,
-            "ad_clicks_today": 0,
-            "last_click_date": date.today().isoformat(),
-            "last_task_completion": None  # ✅ NEW: Task timer tracking
+            "last_task_completion": None
         }
 
         if username:
@@ -79,6 +78,7 @@ class SupabaseDB:
     # ============================================
     # BALANCE OPERATIONS
     # ============================================
+
     async def get_balance(self, user_id: int) -> float:
         """Get user balance"""
         user = await self.get_user(user_id)
@@ -95,26 +95,9 @@ class SupabaseDB:
             print(f"❌ Balance error: {e}")
 
     # ============================================
-    # TIMER TASKS SYSTEM (NEW)
-    # ============================================
-    async def get_user_task_time(self, user_id: int):
-        """Get last task completion time ✅ NEW FOR TIMER TASKS"""
-        user = await self.get_user(user_id)
-        return user.get("last_task_completion")
-
-    async def set_task_completion(self, user_id: int):
-        """Set task completion time ✅ NEW FOR 3-HOUR COOLDOWN"""
-        try:
-            self.client.table("users").update({
-                "last_task_completion": datetime.now().isoformat()
-            }).eq("user_id", user_id).execute()
-            print(f"✅ Task completion recorded for user {user_id}")
-        except Exception as e:
-            print(f"⚠️ Task time error: {e}")
-
-    # ============================================
     # DAILY BONUS
     # ============================================
+
     async def give_daily_bonus(self, user_id: int) -> bool:
         """Give 5 Rs daily bonus (once per day)"""
         try:
@@ -134,8 +117,9 @@ class SupabaseDB:
             return False
 
     # ============================================
-    # REFERRAL SYSTEM
+    # REFERRAL SYSTEM (FIXED - FK constraint)
     # ============================================
+
     async def process_referral(self, user_id: int, referrer_code: str):
         """Process referral - INSTANT 40 Rs reward"""
         if await self.user_already_referred(user_id):
@@ -143,15 +127,19 @@ class SupabaseDB:
             return False
 
         try:
+            # ✅ CRITICAL FIX: Create user FIRST (avoid FK error)
+            await self.create_user_if_not_exists(user_id)
+            
             referrer = await self.get_referrer_by_code(referrer_code)
             if referrer and referrer["user_id"] != user_id:
                 referrer_id = referrer["user_id"]
+                
                 # Give instant 40 Rs bonus
                 await self.add_balance(referrer_id, 40.0)
                 current_refs = int(referrer.get("referrals", 0))
                 self.client.table("users").update({"referrals": current_refs + 1}).eq("user_id", referrer_id).execute()
-
-                # Store referral history
+                
+                # Store referral history (NOW safe - user exists)
                 try:
                     self.client.table("referral_history").insert({
                         "new_user_id": user_id,
@@ -162,12 +150,12 @@ class SupabaseDB:
                     print(f"📊 Referral history stored: {user_id} → {referrer_id}")
                 except Exception as e:
                     print(f"⚠️ History error: {e}")
-
+                
                 print(f"✅ REFERRAL: {user_id} → {referrer_id} (+40 Rs INSTANT)")
                 return True
         except Exception as e:
             print(f"❌ Referral error: {e}")
-            return False
+        return False
 
     async def add_referral_commission(self, new_user_id: int, reward: float) -> None:
         """Add 5% commission to referrer from user's ad earnings"""
@@ -184,6 +172,7 @@ class SupabaseDB:
     # ============================================
     # WITHDRAWAL
     # ============================================
+
     async def can_withdraw(self, user_id: int) -> dict:
         """Check if user can withdraw"""
         user = await self.get_user(user_id)
@@ -203,6 +192,7 @@ class SupabaseDB:
     # ============================================
     # USER MANAGEMENT (ADMIN)
     # ============================================
+
     async def get_active_users(self) -> list:
         """Get users active in last 30 days"""
         try:
@@ -210,14 +200,14 @@ class SupabaseDB:
             batch_size = 500
             offset = 0
             thirty_days_ago = (date.today() - timedelta(days=30)).isoformat()
-
+            
             while True:
                 response = self.client.table("users").select("user_id").gte("created_at", thirty_days_ago).range(offset, offset + batch_size - 1).execute()
                 if not response.data:
                     break
                 all_users.extend([user["user_id"] for user in response.data])
                 offset += batch_size
-
+            
             print(f"✅ Active users: {len(all_users)}")
             return all_users
         except Exception as e:
@@ -230,14 +220,14 @@ class SupabaseDB:
             all_users = []
             batch_size = 500
             offset = 0
-
+            
             while True:
                 response = self.client.table("users").select("user_id").range(offset, offset + batch_size - 1).execute()
                 if not response.data:
                     break
                 all_users.extend([user["user_id"] for user in response.data])
                 offset += batch_size
-
+            
             print(f"✅ Total users: {len(all_users)}")
             return all_users
         except Exception as e:
@@ -262,7 +252,7 @@ class SupabaseDB:
             batch_size = 500
             offset = 0
             total_balance = 0.0
-
+            
             while True:
                 response = self.client.table("users").select("balance").range(offset, offset + batch_size - 1).execute()
                 if not response.data:
@@ -270,7 +260,7 @@ class SupabaseDB:
                 all_users.extend(response.data)
                 total_balance += sum(float(user["balance"]) for user in response.data)
                 offset += batch_size
-
+            
             total_users = len(all_users)
             return {"total_users": total_users, "total_balance": total_balance}
         except Exception as e:
@@ -283,9 +273,10 @@ class SupabaseDB:
             user = await self.get_user(user_id)
             if not user:
                 return {"total_earned": 0.0, "referrals": 0}
-
+            
             balance = float(user.get("balance", 0))
             referrals = int(user.get("referrals", 0))
+            
             return {
                 "total_earned": balance,
                 "referrals": referrals
@@ -296,6 +287,7 @@ class SupabaseDB:
     # ============================================
     # BOT STATS (TOTAL USERS)
     # ============================================
+
     async def get_total_user_count(self) -> int:
         """Get total user count from stats table - INSTANT"""
         try:
@@ -308,25 +300,139 @@ class SupabaseDB:
             return 0
 
     # ============================================
-    # AD CLICKS (Optional for Direct Links)
+    # TIMER TASKS (NEW - For 3h cooldown system)
     # ============================================
-    async def increment_ad_clicks(self, user_id: int):
-        """Track daily ad clicks (for direct links system)"""
+
+    async def get_user_task_time(self, user_id: int):
+        """Get last task completion time - for 3h cooldown"""
+        user = await self.get_user(user_id)
+        if user:
+            return user.get("last_task_completion")
+        return None
+
+    async def set_task_completion(self, user_id: int):
+        """Set task completion time - for 3h cooldown"""
         try:
-            from datetime import date
+            self.client.table("users").update({
+                "last_task_completion": datetime.now().isoformat()
+            }).eq("user_id", user_id).execute()
+            print(f"✅ Task completion time set for user {user_id}")
+        except Exception as e:
+            print(f"⚠️ Task time error: {e}")
+
+    # ============================================
+    # DAILY TASKS (Kept for compatibility)
+    # ============================================
+
+    async def get_user_daily_tasks(self, user_id: int) -> dict:
+        """Get user's daily task progress"""
+        try:
             today = date.today().isoformat()
-            user = await self.get_user(user_id)
+            response = self.client.table("daily_tasks").select("*").eq("user_id", user_id).eq("task_date", today).execute()
+            if response.data:
+                return response.data[0]
+            return None
+        except Exception as e:
+            print(f"⚠️ Task fetch error: {e}")
+            return None
+
+    async def create_or_update_daily_task(self, user_id: int, tasks_completed: int = 0, pending_reward: float = 0):
+        """Create or update user's daily task progress - UPSERT (no duplicate errors)"""
+        try:
+            today = date.today().isoformat()
             
-            if user:
-                clicks = user.get("ad_clicks_today", 0) + 1
-                self.client.table("users").update({
-                    "ad_clicks_today": clicks,
-                    "last_click_date": today
-                }).eq("user_id", user_id).execute()
-                return clicks
-        except:
-            pass
-        return 0
+            # UPSERT: Update if exists, Insert if not (no duplicate key errors)
+            self.client.table("daily_tasks").upsert({
+                "user_id": user_id,
+                "task_date": today,
+                "tasks_completed": tasks_completed,
+                "pending_reward": pending_reward,
+                "last_task_time": datetime.now().isoformat()
+            }).execute()
+            print(f"📋 Tasks for {user_id}: {tasks_completed}/4 complete, {pending_reward} Rs pending")
+        except Exception as e:
+            print(f"❌ Task update error: {e}")
+
+    async def check_task_code(self, code: str, user_id: int) -> dict:
+        """Verify task code - per-user one-time use"""
+        try:
+            today = date.today().isoformat()
+            response = self.client.table("daily_task_codes").select("*").eq("secret_code", code).eq("created_date", today).execute()
+            
+            if not response.data:
+                return {"valid": False, "reason": "Code not found"}
+            
+            code_data = response.data[0]
+            code_id = code_data["id"]
+            
+            # Check if THIS USER already used THIS CODE
+            usage_response = self.client.table("task_code_usage").select("id").eq("code_id", code_id).eq("user_id", user_id).execute()
+            
+            if usage_response.data:
+                return {"valid": False, "reason": "You already used this code"}
+            
+            return {
+                "valid": True,
+                "task_number": code_data["task_number"],
+                "code_id": code_id
+            }
+        except Exception as e:
+            print(f"⚠️ Code check error: {e}")
+            return {"valid": False, "reason": "Error checking code"}
+
+    async def mark_code_used(self, code_id: int, user_id: int):
+        """Mark code as used by this specific user"""
+        try:
+            self.client.table("task_code_usage").insert({
+                "code_id": code_id,
+                "user_id": user_id,
+                "used_date": datetime.now().isoformat()
+            }).execute()
+            print(f"✅ Code {code_id} marked used by user {user_id}")
+        except Exception as e:
+            print(f"⚠️ Mark code error: {e}")
+
+    async def generate_daily_codes(self):
+        """Generate 3 daily codes for admin (call once per day)"""
+        try:
+            import string
+            import random
+            
+            today = date.today().isoformat()
+            
+            # Check if already generated
+            response = self.client.table("daily_task_codes").select("id").eq("created_date", today).execute()
+            if response.data and len(response.data) >= 3:
+                print("✅ Codes already generated for today")
+                return
+            
+            # Delete old codes (older than today)
+            self.client.table("daily_task_codes").delete().lt("created_date", today).execute()
+            
+            # Generate 3 unique codes
+            codes = []
+            for task_num in range(1, 4):
+                code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+                codes.append({"task_number": task_num, "secret_code": code, "created_date": today})
+            
+            # Insert codes
+            self.client.table("daily_task_codes").insert(codes).execute()
+            print(f"📋 Generated 3 daily codes: {[c['secret_code'] for c in codes]}")
+            
+            return codes
+        except Exception as e:
+            print(f"❌ Code generation error: {e}")
+            return []
+
+    async def get_daily_codes(self) -> list:
+        """Get today's codes for admin"""
+        try:
+            today = date.today().isoformat()
+            response = self.client.table("daily_task_codes").select("*").eq("created_date", today).order("task_number").execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"⚠️ Get codes error: {e}")
+            return []
 
 # Initialize database
 db = SupabaseDB()
