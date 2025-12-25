@@ -14,7 +14,7 @@ from handlers.watch_ads_handler import (
 )
 from handlers.broadcast_handler import broadcast_handler, cleanup_handler
 from handlers.extra_handler import extra_handler
-from handlers.tasks_handler import tasks_handler, code_command, code_submit
+from handlers.tasks_handler import tasks_handler, task_callback  # Timer Tasks
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -37,7 +37,7 @@ async def unknown(update: Update, context):
 async def main():
     from utils.supabase import db
     await db.init_table()
-    print("✅ Cashyads2 Ready!")
+    print("✅ Cashyads2 Ready! Timer Tasks + All Features")
     
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_error_handler(error_handler)
@@ -46,7 +46,6 @@ async def main():
     # COMMAND HANDLERS
     # ============================================
     app.add_handler(CommandHandler("start", start_referral, filters.Regex(".*"), has_args=True))
-    app.add_handler(code_command)
     app.add_handler(CommandHandler("start", start))
     
     # ============================================
@@ -55,14 +54,14 @@ async def main():
     app.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
     app.add_handler(MessageHandler(filters.Regex("^(Bonus 🎁)$"), bonus))
     app.add_handler(MessageHandler(filters.Regex("^(Refer and Earn 👥)$"), refer))
-    app.add_handler(MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks_handler.callback))
+    app.add_handler(MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks_handler.callback))  # Timer Tasks
     app.add_handler(MessageHandler(filters.Regex("^(Extra ➡️)$"), extra_handler.callback))
     
-    # Web app
+    # Web app (Mini App)
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
     
     # ============================================
-    # PAYMENT HANDLER (checks withdrawal_method)
+    # PAYMENT HANDLER (Withdrawal Details)
     # ============================================
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & ~filters.Regex("^(Watch Ads 💰|Balance 💳|Bonus 🎁|Refer and Earn 👥|Tasks 📋|Extra ➡️)$"),
@@ -70,12 +69,12 @@ async def main():
     ))
     
     # ============================================
-    # TASK HANDLER (checks if text IS a valid code)
+    # TASK CALLBACKS (Timer Tasks)
     # ============================================
-    app.add_handler(code_submit)
+    app.add_handler(task_callback)
     
     # ============================================
-    # CALLBACK HANDLERS
+    # WITHDRAWAL CALLBACKS
     # ============================================
     app.add_handler(CallbackQueryHandler(withdraw_menu, pattern="^withdraw$"))
     app.add_handler(CallbackQueryHandler(process_withdrawal, pattern="^withdraw_"))
@@ -83,15 +82,18 @@ async def main():
     app.add_handler(CallbackQueryHandler(back_methods, pattern="^back_methods$"))
     app.add_handler(CallbackQueryHandler(back_to_balance, pattern="^back_balance$"))
     
-    # Admin
+    # Admin handlers
     app.add_handler(broadcast_handler)
     app.add_handler(cleanup_handler)
     
-    # Unknown (last)
+    # Unknown messages (last)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
     
     print("🤖 Cashyads2 FULLY LIVE! ✅")
-    print("✅ Tasks & Withdrawals Working Together!")
+    print("✅ Timer Tasks (30s each → 80 Rs reward)")
+    print("✅ 3-hour cooldown per user")
+    print("✅ Withdrawals fully working")
+    print("✅ Mini App + Referrals + All features")
     await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
