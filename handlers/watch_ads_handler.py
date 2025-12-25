@@ -427,28 +427,41 @@ async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def back_methods(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Go back to payment methods"""
+    """Go back to withdrawal methods - from error message"""
     query = update.callback_query
     await query.answer()
     
-    # 🔧 FIX: Clear task flags when going back to methods
-    context.user_data['waiting_for_code'] = False
-    context.user_data['waiting_for_final_task'] = False
-    context.user_data['final_task_start_time'] = None
+    user_id = query.from_user.id
+    user = await db.get_user(user_id)
     
+    if not user:
+        await query.edit_message_text("❌ User not found")
+        return
+    
+    balance = float(user.get("balance", 0))
+    referrals = int(user.get("referrals", 0))
+    
+    # Show withdrawal methods menu
     keyboard = [
+        [InlineKeyboardButton("🏦 UPI", callback_data="withdraw_upi")],
         [InlineKeyboardButton("💳 Paytm", callback_data="withdraw_paytm")],
-        [InlineKeyboardButton("💸 UPI", callback_data="withdraw_upi")],
-        [InlineKeyboardButton("🏦 Bank Transfer", callback_data="withdraw_bank")],
-        [InlineKeyboardButton("💵 Paypal", callback_data="withdraw_paypal")],
-        [InlineKeyboardButton("₿ USDT TRC20", callback_data="withdraw_usdt")],
-        [InlineKeyboardButton("🔙 Back", callback_data="back_balance")]
+        [InlineKeyboardButton("🏧 Bank Transfer", callback_data="withdraw_bank")],
+        [InlineKeyboardButton("🔙 Back to Balance", callback_data="back_balance")]
     ]
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(
-        f"💳 <b>Choose Payment Method:</b>\n\n"
-        f"Select your preferred withdrawal method below:",
+    # ✅ FIX: Delete old message and send new one instead of edit
+    try:
+        await query.delete_message()
+    except:
+        pass
+    
+    await query.message.reply_text(
+        f"💳 <b>Select Withdrawal Method</b>\n\n"
+        f"💰 <b>Your Balance: ₹{balance:.1f}</b>\n"
+        f"👥 <b>Referrals: {referrals}</b>\n\n"
+        f"👇 Choose a method:",
         reply_markup=reply_markup,
         parse_mode='HTML'
     )
