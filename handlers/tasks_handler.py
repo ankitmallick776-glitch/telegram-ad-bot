@@ -1,279 +1,172 @@
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import ContextTypes, MessageHandler, filters, CommandHandler
+from telegram.ext import ContextTypes, MessageHandler, filters, CallbackQueryHandler
 from utils.supabase import db
-from datetime import date, datetime, timedelta
-import os
+from datetime import datetime, timedelta
 import asyncio
+import os
 
-TASK_REWARD_PER_TASK = 25.0
-TOTAL_REWARD = 100.0
+TASK_REWARD = 80.0
+TASK_DURATION = 30  # 30 seconds per task
+COOLDOWN_HOURS = 3
 MAX_TASKS = 4
 
-async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show tasks menu"""
+async def tasks_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Main tasks menu"""
     user_id = update.effective_user.id
     
-    # Get or create daily tasks
-    user_tasks = await db.get_user_daily_tasks(user_id)
-    if not user_tasks:
-        await db.create_or_update_daily_task(user_id, 0, 0)
-        user_tasks = await db.get_user_daily_tasks(user_id)
-    
-    # Safety check - if still None, create default dict
-    if not user_tasks:
-        await db.create_or_update_daily_task(user_id, 0, 0)
-        user_tasks = {"tasks_completed": 0, "pending_reward": 0}
-    
-    tasks_done = user_tasks.get("tasks_completed", 0)
-    pending = user_tasks.get("pending_reward", 0)
-    
-    # Check if all tasks done
-    if tasks_done >= MAX_TASKS:
-        await update.message.reply_text(
-            f"❌ No tasks available!\n\n"
-            f"✅ You have completed all tasks for today.\n"
-            f"💰 Come back tomorrow for more tasks!",
-            parse_mode='HTML'
-        )
-        return
-    
-    # Show next task
-    next_task = tasks_done + 1
-    
-    if next_task <= 3:
-        # Code-based tasks
-        url_key = f"MONETAG_AD_URL_{next_task}"
-        task_url = os.getenv(url_key, "https://monetag.com")
-        
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"🔗 Open Task {next_task}", url=task_url)]
-        ])
-        
-        # SET flag that user is expecting code
-        context.user_data['waiting_for_code'] = True
-        context.user_data['current_task'] = next_task
-        
-        await update.message.reply_text(
-            f"📋 Task {next_task}/4\n\n"
-            f"💰 Reward: +25 Rs\n"
-            f"🔑 Find the secret code in the ad\n"
-            f"📝 Type the code here to complete task\n\n"
-            f"👇 Click to open ad:",
-            reply_markup=keyboard,
-            parse_mode='HTML'
-        )
-    
-    else:  # Task 4 - Final task (no code needed)
-        final_url = os.getenv("MONETAG_FINAL_TASK_URL", "https://monetag.com")
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Complete Final Task", url=final_url)]
-        ])
-        
-        # Mark task 4 as in progress
-        context.user_data['waiting_for_final_task'] = True
-        context.user_data['final_task_start_time'] = datetime.now()
-        
-        await update.message.reply_text(
-            f"📋 Final Task 4/4\n\n"
-            f"💰 Reward: +25 Rs\n"
-            f"⏰ Click below to complete\n"
-            f"⏱️ Wait 1 minute, then type 'done' in chat\n\n"
-            f"👇 Click to complete:",
-            reply_markup=keyboard,
-            parse_mode='HTML'
-        )
-
-async def submit_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /code command - show daily codes to admin"""
-    user_id = update.effective_user.id
-    admin_id = int(os.getenv("ADMIN_ID", "7836675446"))
-    
-    # Admin only
-    if user_id != admin_id:
-        await update.message.reply_text(
-            "❌ Admin only command!",
-            parse_mode='HTML'
-        )
-        return
-    
-    # Generate codes if not exist
-    codes = await db.get_daily_codes()
-    if not codes or len(codes) < 3:
-        await db.generate_daily_codes()
-        codes = await db.get_daily_codes()
-    
-    if not codes:
-        await update.message.reply_text("❌ Error generating codes!")
-        return
-    
-    # Format message for admin
-    msg = f"📋 TODAY'S TASK CODES ({date.today().isoformat()})\n\n"
-    
-    for code_data in codes:
-        task_num = code_data.get("task_number")
-        secret = code_data.get("secret_code")
-        url_key = f"MONETAG_AD_URL_{task_num}"
-        task_url = os.getenv(url_key, "https://monetag.com")
-        
-        msg += f"Task {task_num}: {secret}\n"
-        msg += f"Link: Open Link {task_num}\n"
-        msg += f"👉 Add code to this link\n\n"
-    
-    msg += f"ℹ️ Instructions:\n"
-    msg += f"• Add codes to Monetag links above\n"
-    msg += f"• Users will find codes in ads\n"
-    msg += f"• Each user can use each code ONCE\n"
-    msg += f"• Multiple users can use same code\n"
-    msg += f"• Codes valid for 24 hours\n"
-    msg += f"• Tomorrow new codes will be generated"
-    
-    await update.message.reply_text(msg, parse_mode='HTML')
-
-async def verify_task_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Verify code from user - SIMPLE & WORKING"""
-    user_id = update.effective_user.id
-    user_input = update.message.text.strip().upper()
-    
-    # ============================================
-    # CHECK IF WAITING FOR CODE (Task 1-3)
-    # ============================================
-    if context.user_data.get('waiting_for_code'):
-        # User clicked Tasks, verify their input is a valid code
-        code_check = await db.check_task_code(user_input, user_id)
-        
-        if not code_check.get("valid"):
-            # Invalid code
+    # Check cooldown
+    last_completion = await db.get_user_task_time(user_id)
+    if last_completion:
+        last_time = datetime.fromisoformat(last_completion)
+        time_left = (last_time + timedelta(hours=COOLDOWN_HOURS)) - datetime.now()
+        if time_left.total_seconds() > 0:
+            hours = int(time_left.total_seconds() / 3600)
+            mins = int((time_left.total_seconds() % 3600) / 60)
             await update.message.reply_text(
-                f"❌ Invalid code!\n\n"
-                f"❌ {code_check.get('reason')}\n\n"
-                f"💡 Make sure you copied the code correctly from the ad.",
+                f"⏳ <b>Tasks on cooldown!</b>\n\n"
+                f"⏰ Next available: {hours}h {mins}m\n"
+                f"💡 Complete tasks every 3 hours for max earnings!",
                 parse_mode='HTML'
             )
-            return  # ← MESSAGE CONSUMED
-        
-        # ✅ CODE IS VALID - PROCESS IT
-        code_id = code_check.get("code_id")
-        await db.mark_code_used(code_id, user_id)
-        
-        # Update user progress
-        user_tasks = await db.get_user_daily_tasks(user_id)
-        if user_tasks:
-            tasks_done = user_tasks.get("tasks_completed", 0) + 1
+            return
+    
+    # Set task state
+    context.user_data['current_task'] = 1
+    context.user_data['tasks_completed'] = 0
+    await show_task(update, context, 1)
+
+async def show_task(update: Update, context: ContextTypes.DEFAULT_TYPE, task_num: int):
+    """Show specific task with timer"""
+    links = {
+        1: os.getenv("TASK_LINK_1", "https://monetag.com"),
+        2: os.getenv("TASK_LINK_2", "https://adsterra.com"),
+        3: os.getenv("TASK_LINK_3", "https://monetag.com"),
+        4: os.getenv("TASK_LINK_4", "https://adsterra.com")
+    }
+    
+    keyboard = [[InlineKeyboardButton(f"🔗 Open Task {task_num}", url=links[task_num])]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Start timer
+    context.user_data['task_start_time'] = datetime.now()
+    context.user_data['current_task'] = task_num
+    
+    await update.callback_query.edit_message_text(
+        f"📋 <b>TASK {task_num}/4</b>\n\n"
+        f"💰 <b>Reward: +80 Rs (after all 4 tasks)</b>\n\n"
+        f"⏱️ <b>Instructions:</b>\n"
+        f"1️⃣ Click button below\n"
+        f"2️⃣ Stay on website for <b>30 seconds</b>\n"
+        f"3️⃣ Return here automatically\n\n"
+        f"⚠️ <b>Leave early = Task fails!</b>\n\n"
+        f"👇 <b>Start Task {task_num}:</b>",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+    
+    # Auto-check after 35 seconds (buffer)
+    context.job_queue.run_once(check_task_completion, 35, data={'user_id': update.effective_user.id, 'task_num': task_num}, name=f'task_{task_num}')
+
+async def check_task_completion(context: ContextTypes.DEFAULT_TYPE):
+    """Auto-check if user completed task (stayed 30s)"""
+    job = context.job
+    user_id = job.data['user_id']
+    task_num = job.data['task_num']
+    
+    # Get user data
+    user_data = context.bot_data.get(user_id, {})
+    start_time = user_data.get('task_start_time')
+    
+    if start_time:
+        elapsed = (datetime.now() - start_time).total_seconds()
+        if elapsed >= TASK_DURATION:
+            # Task completed! Move to next
+            tasks_completed = user_data.get('tasks_completed', 0) + 1
+            context.bot_data[user_id] = {
+                'tasks_completed': tasks_completed,
+                'current_task': task_num + 1
+            }
+            
+            if tasks_completed >= MAX_TASKS:
+                # ALL TASKS COMPLETE - GIVE REWARD
+                await give_task_reward(context.bot, user_id)
+            else:
+                # Next task
+                await show_task_auto(context.bot, user_id, task_num + 1)
         else:
-            tasks_done = 1
-        
-        pending = tasks_done * TASK_REWARD_PER_TASK
-        await db.create_or_update_daily_task(user_id, tasks_done, pending)
-        
-        # Clear flag
-        context.user_data['waiting_for_code'] = False
-        
-        # Show completion
-        total_progress = f"{tasks_done * TASK_REWARD_PER_TASK:.0f}/{TOTAL_REWARD:.0f} Rs"
-        
-        if tasks_done < MAX_TASKS:
-            await update.message.reply_text(
-                f"✅ Task {tasks_done}/4 completed!\n\n"
-                f"💰 +25 Rs earned with this task\n"
-                f"📊 Total progress: {total_progress}\n\n"
-                f"💡 Complete all tasks to get rewarded!\n\n"
-                f"👇 Click Tasks button for next task:",
-                parse_mode='HTML'
-            )
-        return  # ← MESSAGE CONSUMED
-    
-    # ============================================
-    # CHECK IF WAITING FOR FINAL TASK
-    # ============================================
-    if context.user_data.get('waiting_for_final_task'):
-        if user_input == 'DONE':
-            start_time = context.user_data.get('final_task_start_time')
-            
-            if not start_time:
-                await update.message.reply_text(
-                    "❌ Please click the task link first!",
-                    parse_mode='HTML'
-                )
-                return
-            
-            elapsed = (datetime.now() - start_time).total_seconds()
-            
-            if elapsed < 60:
-                remaining = 60 - int(elapsed)
-                await update.message.reply_text(
-                    f"⏳ Please wait {remaining} more seconds...",
-                    parse_mode='HTML'
-                )
-                return
-            
-            # ✅ 1 MINUTE PASSED - COMPLETE ALL TASKS
-            try:
-                user = await db.get_user(user_id)
-                current_balance = float(user.get("balance", 0))
-                new_balance = current_balance + TOTAL_REWARD
-                
-                db.client.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
-                print(f"💰 User {user_id}: Task reward +{TOTAL_REWARD} = {new_balance}")
-                
-                # Add commission to referrer
-                referral_response = db.client.table("referral_history").select("referrer_id").eq("new_user_id", user_id).execute()
-                
-                if referral_response.data:
-                    referrer_id = referral_response.data[0]["referrer_id"]
-                    commission = TOTAL_REWARD * 0.05
-                    referrer = await db.get_user(referrer_id)
-                    referrer_balance = float(referrer.get("balance", 0))
-                    new_referrer_balance = referrer_balance + commission
-                    db.client.table("users").update({"balance": new_referrer_balance}).eq("user_id", referrer_id).execute()
-                    print(f"🤝 COMMISSION: {user_id} earned {TOTAL_REWARD} → {referrer_id} gets {commission:.2f} Rs")
-                
-                # Reset tasks
-                await db.create_or_update_daily_task(user_id, MAX_TASKS, 0)
-                
-                context.user_data['waiting_for_final_task'] = False
-                context.user_data['final_task_start_time'] = None
-                
-                await update.message.reply_text(
-                    f"🎉 ALL TASKS COMPLETED!\n\n"
-                    f"💰 +100 Rs added to main balance!\n"
-                    f"💳 Your new balance: {new_balance:.1f} Rs\n\n"
-                    f"✨ Come back tomorrow for more tasks!",
-                    parse_mode='HTML'
-                )
-                
-                print(f"✅ User {user_id} completed all 4 tasks! Balance: {new_balance}")
-                
-            except Exception as e:
-                print(f"❌ Task completion error: {e}")
-                await update.message.reply_text(
-                    f"❌ Error completing task!\n\n"
-                    f"Please try again.",
-                    parse_mode='HTML'
-                )
-            return  # ← MESSAGE CONSUMED
-        else:
-            await update.message.reply_text(
-                "⏱️ Task is running...\n\n"
-                "Type 'done' when you finish the task.",
-                parse_mode='HTML'
-            )
-            return  # ← MESSAGE CONSUMED
-    
-    # ============================================
-    # NOT A TASK - PASS TO PAYMENT HANDLER
-    # ============================================
-    # User typed something but not waiting for code/task
-    # → Let payment handler check if it's withdrawal
-    return  # ← MESSAGE NOT CONSUMED
+            # Task failed - reset
+            await context.bot.send_message(user_id, "❌ Task failed! Stayed less than 30s. Click Tasks to retry.")
 
-# Handler for tasks button
-tasks_handler = MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks)
+async def show_task_auto(bot, user_id: int, task_num: int):
+    """Show next task automatically"""
+    try:
+        links = {
+            1: os.getenv("TASK_LINK_1", "https://monetag.com"),
+            2: os.getenv("TASK_LINK_2", "https://adsterra.com"),
+            3: os.getenv("TASK_LINK_3", "https://monetag.com"),
+            4: os.getenv("TASK_LINK_4", "https://adsterra.com")
+        }
+        
+        keyboard = [[InlineKeyboardButton(f"🔗 Open Task {task_num}", url=links[task_num])]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        bot_data = bot.bot_data.get(user_id, {})
+        bot_data['task_start_time'] = datetime.now()
+        bot_data['current_task'] = task_num
+        bot.bot_data[user_id] = bot_data
+        
+        bot.send_message(
+            user_id,
+            f"✅ <b>Task {task_num-1} Complete!</b>\n\n"
+            f"📋 <b>Next: Task {task_num}/4</b>\n\n"
+            f"⏱️ Stay 30s on link → Auto next task\n\n"
+            f"👇 Click to continue:",
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+        
+        # Schedule next check
+        from telegram.ext import Application
+        app = Application.builder().token(os.getenv("BOT_TOKEN")).build()
+        app.job_queue.run_once(check_task_completion, 35, data={'user_id': user_id, 'task_num': task_num})
+        
+    except Exception as e:
+        print(f"Auto task error: {e}")
 
-# Handler for /code command (admin)
-code_command = CommandHandler("code", submit_code)
+async def give_task_reward(bot, user_id: int):
+    """Give 80 Rs reward after all tasks"""
+    try:
+        user = await db.get_user(user_id)
+        current_balance = float(user.get("balance", 0))
+        new_balance = current_balance + TASK_REWARD
+        
+        # Update balance
+        db.client.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
+        
+        # Record completion time
+        db.client.table("users").update({"last_task_completion": datetime.now().isoformat()}).eq("user_id", user_id).execute()
+        
+        bot.send_message(
+            user_id,
+            f"🎉 <b>ALL 4 TASKS COMPLETED!</b>\n\n"
+            f"💰 <b>+80 Rs added to balance!</b>\n"
+            f"💳 <b>New balance: ₹{new_balance:.1f}</b>\n\n"
+            f"⏳ <b>Next tasks available in 3 hours</b>\n\n"
+            f"🔥 Share with friends for more earnings!",
+            parse_mode='HTML'
+        )
+        print(f"✅ User {user_id} completed tasks! +80 Rs")
+        
+    except Exception as e:
+        print(f"Reward error: {e}")
+        bot.send_message(user_id, "❌ Reward error! Contact admin.")
 
-# Handler for code/task submission
-code_submit = MessageHandler(
-    filters.TEXT & ~filters.COMMAND,
-    verify_task_code
-)
+# Supabase functions needed
+async def get_user_task_time(user_id: int):
+    """Get last task completion time"""
+    user = await db.get_user(user_id)
+    return user.get("last_task_completion")
+
+# Handlers
+tasks_handler = MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks_menu)
+task_callback = CallbackQueryHandler(lambda u, c: show_task(u, c, c.user_data.get('current_task', 1)), pattern="^task_")
