@@ -117,29 +117,41 @@ class SupabaseDB:
             return False
 
     # ============================================
-    # REFERRAL SYSTEM (FIXED - FK constraint)
+    # REFERRAL SYSTEM (FIXED - FK constraint safe)
     # ============================================
 
     async def process_referral(self, user_id: int, referrer_code: str):
-        """Process referral - INSTANT 40 Rs reward"""
+        """Process referral - INSTANT 40 Rs reward (SAFE)"""
         if await self.user_already_referred(user_id):
             print(f"❌ EXPLOIT BLOCKED: User {user_id} already has a referrer!")
             return False
 
         try:
-            # ✅ CRITICAL FIX: Create user FIRST (avoid FK error)
-            await self.create_user_if_not_exists(user_id)
-            
+            # ✅ CRITICAL: Create referrer user FIRST if doesn't exist
             referrer = await self.get_referrer_by_code(referrer_code)
-            if referrer and referrer["user_id"] != user_id:
-                referrer_id = referrer["user_id"]
-                
+            if not referrer:
+                print(f"❌ Referrer not found for code: {referrer_code}")
+                return False
+            
+            referrer_id = referrer["user_id"]
+            
+            # ✅ Create BOTH users before saving history (FK safe)
+            await self.create_user_if_not_exists(user_id)
+            await self.create_user_if_not_exists(referrer_id)
+            
+            if referrer_id != user_id:
                 # Give instant 40 Rs bonus
                 await self.add_balance(referrer_id, 40.0)
                 current_refs = int(referrer.get("referrals", 0))
-                self.client.table("users").update({"referrals": current_refs + 1}).eq("user_id", referrer_id).execute()
                 
-                # Store referral history (NOW safe - user exists)
+                try:
+                    self.client.table("users").update({
+                        "referrals": current_refs + 1
+                    }).eq("user_id", referrer_id).execute()
+                except Exception as e:
+                    print(f"⚠️ Referral count update error: {e}")
+                
+                # Store referral history (NOW 100% safe)
                 try:
                     self.client.table("referral_history").insert({
                         "new_user_id": user_id,
@@ -149,12 +161,13 @@ class SupabaseDB:
                     }).execute()
                     print(f"📊 Referral history stored: {user_id} → {referrer_id}")
                 except Exception as e:
-                    print(f"⚠️ History error: {e}")
+                    print(f"⚠️ History insert error (non-critical): {e}")
                 
                 print(f"✅ REFERRAL: {user_id} → {referrer_id} (+40 Rs INSTANT)")
                 return True
         except Exception as e:
-            print(f"❌ Referral error: {e}")
+            print(f"❌ Referral process error: {e}")
+        
         return False
 
     async def add_referral_commission(self, new_user_id: int, reward: float) -> None:
@@ -300,7 +313,7 @@ class SupabaseDB:
             return 0
 
     # ============================================
-    # TIMER TASKS (NEW - For 3h cooldown system)
+    # TIMER TASKS (For 3h cooldown system)
     # ============================================
 
     async def get_user_task_time(self, user_id: int):
@@ -319,120 +332,6 @@ class SupabaseDB:
             print(f"✅ Task completion time set for user {user_id}")
         except Exception as e:
             print(f"⚠️ Task time error: {e}")
-
-    # ============================================
-    # DAILY TASKS (Kept for compatibility)
-    # ============================================
-
-    async def get_user_daily_tasks(self, user_id: int) -> dict:
-        """Get user's daily task progress"""
-        try:
-            today = date.today().isoformat()
-            response = self.client.table("daily_tasks").select("*").eq("user_id", user_id).eq("task_date", today).execute()
-            if response.data:
-                return response.data[0]
-            return None
-        except Exception as e:
-            print(f"⚠️ Task fetch error: {e}")
-            return None
-
-    async def create_or_update_daily_task(self, user_id: int, tasks_completed: int = 0, pending_reward: float = 0):
-        """Create or update user's daily task progress - UPSERT (no duplicate errors)"""
-        try:
-            today = date.today().isoformat()
-            
-            # UPSERT: Update if exists, Insert if not (no duplicate key errors)
-            self.client.table("daily_tasks").upsert({
-                "user_id": user_id,
-                "task_date": today,
-                "tasks_completed": tasks_completed,
-                "pending_reward": pending_reward,
-                "last_task_time": datetime.now().isoformat()
-            }).execute()
-            print(f"📋 Tasks for {user_id}: {tasks_completed}/4 complete, {pending_reward} Rs pending")
-        except Exception as e:
-            print(f"❌ Task update error: {e}")
-
-    async def check_task_code(self, code: str, user_id: int) -> dict:
-        """Verify task code - per-user one-time use"""
-        try:
-            today = date.today().isoformat()
-            response = self.client.table("daily_task_codes").select("*").eq("secret_code", code).eq("created_date", today).execute()
-            
-            if not response.data:
-                return {"valid": False, "reason": "Code not found"}
-            
-            code_data = response.data[0]
-            code_id = code_data["id"]
-            
-            # Check if THIS USER already used THIS CODE
-            usage_response = self.client.table("task_code_usage").select("id").eq("code_id", code_id).eq("user_id", user_id).execute()
-            
-            if usage_response.data:
-                return {"valid": False, "reason": "You already used this code"}
-            
-            return {
-                "valid": True,
-                "task_number": code_data["task_number"],
-                "code_id": code_id
-            }
-        except Exception as e:
-            print(f"⚠️ Code check error: {e}")
-            return {"valid": False, "reason": "Error checking code"}
-
-    async def mark_code_used(self, code_id: int, user_id: int):
-        """Mark code as used by this specific user"""
-        try:
-            self.client.table("task_code_usage").insert({
-                "code_id": code_id,
-                "user_id": user_id,
-                "used_date": datetime.now().isoformat()
-            }).execute()
-            print(f"✅ Code {code_id} marked used by user {user_id}")
-        except Exception as e:
-            print(f"⚠️ Mark code error: {e}")
-
-    async def generate_daily_codes(self):
-        """Generate 3 daily codes for admin (call once per day)"""
-        try:
-            import string
-            import random
-            
-            today = date.today().isoformat()
-            
-            # Check if already generated
-            response = self.client.table("daily_task_codes").select("id").eq("created_date", today).execute()
-            if response.data and len(response.data) >= 3:
-                print("✅ Codes already generated for today")
-                return
-            
-            # Delete old codes (older than today)
-            self.client.table("daily_task_codes").delete().lt("created_date", today).execute()
-            
-            # Generate 3 unique codes
-            codes = []
-            for task_num in range(1, 4):
-                code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-                codes.append({"task_number": task_num, "secret_code": code, "created_date": today})
-            
-            # Insert codes
-            self.client.table("daily_task_codes").insert(codes).execute()
-            print(f"📋 Generated 3 daily codes: {[c['secret_code'] for c in codes]}")
-            
-            return codes
-        except Exception as e:
-            print(f"❌ Code generation error: {e}")
-            return []
-
-    async def get_daily_codes(self) -> list:
-        """Get today's codes for admin"""
-        try:
-            today = date.today().isoformat()
-            response = self.client.table("daily_task_codes").select("*").eq("created_date", today).order("task_number").execute()
-            return response.data if response.data else []
-        except Exception as e:
-            print(f"⚠️ Get codes error: {e}")
-            return []
 
 # Initialize database
 db = SupabaseDB()
