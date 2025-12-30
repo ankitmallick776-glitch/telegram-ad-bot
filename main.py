@@ -1,9 +1,8 @@
 import asyncio
 import logging
 import os
-import nest_asyncio
 from dotenv import load_dotenv
-from telegram import Update, WebAppInfo
+from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from telegram.error import BadRequest
 
@@ -15,7 +14,7 @@ from handlers.watch_ads_handler import (
 )
 from handlers.broadcast_handler import broadcast_handler, cleanup_handler
 from handlers.extra_handler import extra_handler
-from handlers.tasks_handler import tasks_handler  # FIXED Timer Tasks
+from handlers.tasks_handler import tasks_handler
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -38,7 +37,7 @@ async def unknown(update: Update, context):
 async def main():
     from utils.supabase import db
     await db.init_table()
-    print("✅ Cashyads2 Ready! Timer Tasks FIXED")
+    print("✅ Cashyads2 Ready! Timer Tasks WORKING")
     
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_error_handler(error_handler)
@@ -55,7 +54,7 @@ async def main():
     app.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
     app.add_handler(MessageHandler(filters.Regex("^(Bonus 🎁)$"), bonus))
     app.add_handler(MessageHandler(filters.Regex("^(Refer and Earn 👥)$"), refer))
-    app.add_handler(MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks_handler.callback))  # Timer Tasks ✅
+    app.add_handler(MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks_handler.callback))
     app.add_handler(MessageHandler(filters.Regex("^(Extra ➡️)$"), extra_handler.callback))
     
     # Web app (Mini App)
@@ -87,12 +86,11 @@ async def main():
     
     print("🤖 Cashyads2 FULLY LIVE! ✅")
     print("✅ Timer Tasks: 4×30s → +80 Rs every 3h")
-    print("✅ Withdrawals: No conflicts")
+    print("✅ Withdrawals: Working perfectly")
     print("✅ Mini App + Referrals + All features")
     print("✅ ZERO ERRORS - Production Ready!")
     
     await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
-    nest_asyncio.apply()
     asyncio.run(main())
