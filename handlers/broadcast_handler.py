@@ -4,7 +4,6 @@ from utils.supabase import db
 import os
 
 ADMIN_ID = int(os.getenv("ADMIN_ID", 7836675446))
-
 failed_broadcast_users = []
 
 async def broadcast_task(context, admin_id, message, active_users):
@@ -70,7 +69,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.bot_data.get('broadcast_running'):
         await update.message.reply_text(
             "⚠️ Broadcast already running!\n\n"
-            "Wait for it to complete before starting another.",
+            "Wait for it to complete.",
             parse_mode='HTML'
         )
         return
@@ -79,10 +78,11 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.bot_data['broadcast_running'] = True
     
     await update.message.reply_text(
-        f"✅ <b>Broadcast STARTED!</b>\n\n"
+        f"✅ <b>Broadcast STARTED in background!</b>\n\n"
         f"<b>Active users:</b> {total_users}\n"
         f"<b>Message:</b> {message[:50]}...\n\n"
-        f"You can use other features while broadcasting!",
+        f"You can use other features while broadcasting!\n"
+        f"Final report will be sent when complete.",
         parse_mode='HTML'
     )
     
@@ -103,7 +103,7 @@ async def cleanup_task(context, admin_id):
         
         await context.bot.send_message(
             admin_id,
-            f"🧹 <b>Deleting {total_to_delete} users...</b>",
+            f"🧹 <b>Deleting {total_to_delete} blocked users...</b>",
             parse_mode='HTML'
         )
         
@@ -145,7 +145,14 @@ async def cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not failed_broadcast_users or len(failed_broadcast_users) == 0:
         await update.message.reply_text(
             "❌ No failed users!\n\n"
-            "Run /broadcast first.",
+            "Run /broadcast first, then /cleanup.",
+            parse_mode='HTML'
+        )
+        return
+    
+    if context.bot_data.get('cleanup_running'):
+        await update.message.reply_text(
+            "⚠️ Cleanup already running!",
             parse_mode='HTML'
         )
         return
