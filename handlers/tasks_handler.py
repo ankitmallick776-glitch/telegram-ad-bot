@@ -21,7 +21,8 @@ async def tasks_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             mins = int((time_left.total_seconds() % 3600) / 60)
             await update.message.reply_text(
                 f"⏳ <b>Tasks on cooldown!</b>\n\n"
-                f"⏰ Next available: {hours}h {mins}m",
+                f"⏰ Next available: {hours}h {mins}m\n"
+                f"💡 Complete tasks every 3 hours for max earnings!",
                 parse_mode='HTML'
             )
             return
@@ -36,22 +37,23 @@ async def tasks_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📋 <b>TASK AVAILABLE</b>\n\n"
         f"💰 <b>Reward: +80 Rs</b>\n\n"
         f"⏱️ <b>Instructions:</b>\n"
-        f"1️⃣ Click button\n"
+        f"1️⃣ Click button below\n"
         f"2️⃣ Wait 30 seconds\n"
         f"3️⃣ Return here\n"
         f"4️⃣ Type: done\n\n"
+        f"⚠️ <b>You must wait 30 seconds!</b>\n\n"
         f"👇 <b>Start:</b>",
         reply_markup=reply_markup,
         parse_mode='HTML'
     )
 
 async def verify_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Verify task completion when user types 'done'"""
+    """Verify task completion"""
     user_id = update.effective_user.id
     message = update.message.text.strip().lower()
     
     if message != "done":
-        return  # Not a task completion
+        return
     
     start_time = context.user_data.get('task_start_time')
     if not start_time:
@@ -62,12 +64,12 @@ async def verify_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if elapsed < 30:
         remaining = int(30 - elapsed)
         await update.message.reply_text(
-            f"⏳ Wait {remaining} more seconds...",
+            f"⏳ Please wait {remaining} more seconds...",
             parse_mode='HTML'
         )
         return
     
-    # Task complete - give reward
+    # Task complete
     try:
         user = await db.get_user(user_id)
         current_balance = float(user.get("balance", 0))
@@ -78,19 +80,34 @@ async def verify_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "last_task_completion": datetime.now().isoformat()
         }).eq("user_id", user_id).execute()
         
+        # Check referrer
+        referral_response = db.client.table("referral_history").select("referrer_id").eq("new_user_id", user_id).execute()
+        if referral_response.data:
+            referrer_id = referral_response.data[0]["referrer_id"]
+            commission = TASK_REWARD * 0.05
+            referrer = await db.get_user(referrer_id)
+            referrer_balance = float(referrer.get("balance", 0))
+            new_referrer_balance = referrer_balance + commission
+            db.client.table("users").update({
+                "balance": new_referrer_balance
+            }).eq("user_id", referrer_id).execute()
+            print(f"🤝 Commission: {referrer_id} +{commission:.1f}")
+        
         await update.message.reply_text(
             f"🎉 <b>TASK COMPLETE!</b>\n\n"
-            f"💰 <b>+80 Rs added!</b>\n"
-            f"💳 <b>Balance: ₹{new_balance:.1f}</b>\n\n"
-            f"⏳ Next in 3 hours",
+            f"💰 <b>+80 Rs added to balance!</b>\n"
+            f"💳 <b>New balance: ₹{new_balance:.1f}</b>\n\n"
+            f"⏳ <b>Next tasks in 3 hours</b>\n\n"
+            f"🔥 Invite friends for more rewards!",
             parse_mode='HTML'
         )
+        print(f"✅ User {user_id}: +80 Rs!")
         
         context.user_data.clear()
         
     except Exception as e:
         print(f"❌ Task error: {e}")
-        await update.message.reply_text("❌ Error!", parse_mode='HTML')
+        await update.message.reply_text("❌ Task error! Try again.", parse_mode='HTML')
 
 tasks_handler = MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks_menu)
 task_verify = MessageHandler(filters.TEXT & ~filters.COMMAND, verify_task)
