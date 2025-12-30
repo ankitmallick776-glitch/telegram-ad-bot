@@ -2,6 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler
 from utils.supabase import db
 import os
+import asyncio
 
 ADMIN_ID = int(os.getenv("ADMIN_ID", 7836675446))
 failed_broadcast_users = []
@@ -27,7 +28,6 @@ async def broadcast_task(context, admin_id, message, active_users):
             failed_broadcast_users.append(user_id)
         
         if i % 30 == 0:
-            import asyncio
             await asyncio.sleep(1)
     
     try:
@@ -42,8 +42,6 @@ async def broadcast_task(context, admin_id, message, active_users):
         )
     except:
         pass
-    
-    context.bot_data['broadcast_running'] = False
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start broadcast"""
@@ -86,12 +84,8 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='HTML'
     )
     
-    context.job_queue.run_once(
-        broadcast_task,
-        0,
-        data={'admin_id': update.effective_user.id, 'message': message, 'active_users': active_users},
-        name=f"broadcast_{update.effective_user.id}"
-    )
+    # Don't use job_queue - run directly
+    asyncio.create_task(broadcast_task(context, update.effective_user.id, message, active_users))
 
 async def cleanup_task(context, admin_id):
     """Delete failed users"""
@@ -115,7 +109,6 @@ async def cleanup_task(context, admin_id):
                 pass
             
             if i % 20 == 0:
-                import asyncio
                 await asyncio.sleep(0.5)
         
         all_users = await db.get_all_user_ids()
@@ -166,12 +159,7 @@ async def cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='HTML'
     )
     
-    context.job_queue.run_once(
-        cleanup_task,
-        0,
-        data={'admin_id': update.effective_user.id},
-        name=f"cleanup_{update.effective_user.id}"
-    )
+    asyncio.create_task(cleanup_task(context, update.effective_user.id))
 
 broadcast_handler = CommandHandler("broadcast", broadcast)
 cleanup_handler = CommandHandler("cleanup", cleanup)
