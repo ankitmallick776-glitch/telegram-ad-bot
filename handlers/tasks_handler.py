@@ -3,17 +3,18 @@ from telegram.ext import ContextTypes, MessageHandler, filters
 from utils.supabase import db
 from datetime import datetime, timedelta
 import os
+import asyncio
 
 TASK_REWARD = 80.0
-TASK_DURATION = 30  # 30 seconds per task
+TASK_DURATION = 30
 COOLDOWN_HOURS = 3
 MAX_TASKS = 4
 
-# Store task timers globally
+# Global task timers
 task_timers = {}
 
 async def tasks_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Main tasks menu - triggered by button"""
+    """Main tasks menu"""
     user_id = update.effective_user.id
     
     # Check cooldown
@@ -32,8 +33,7 @@ async def tasks_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
     
-    # Set task state and show first task
-    context.user_data['current_task'] = 1
+    # Start first task
     context.user_data['tasks_completed'] = 0
     context.user_data['task_start_time'] = datetime.now()
     
@@ -59,47 +59,60 @@ async def show_task_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='HTML'
     )
     
-    # Schedule check using asyncio instead of job_queue
-    import asyncio
-    task_timers[user_id] = asyncio.create_task(
-        check_task_auto(update.get_bot(), user_id, 1, context)
-    )
+    # Schedule check
+    await schedule_task_check(update.get_bot(), user_id, 1, context)
 
-async def check_task_auto(bot, user_id: int, task_num: int, context: ContextTypes.DEFAULT_TYPE):
-    """Auto-check task completion after 35 seconds"""
-    await asyncio.sleep(35)
-    
-    user_context = context.user_data.get(user_id, {})
-    start_time = user_context.get('task_start_time')
-    
-    if start_time:
-        elapsed = (datetime.now() - start_time).total_seconds()
-        if elapsed >= TASK_DURATION:
-            # ✅ TASK SUCCESS
-            current_tasks = user_context.get('tasks_completed', 0) + 1
-            
-            if current_tasks >= MAX_TASKS:
-                # ALL TASKS COMPLETE
-                await give_final_reward(bot, user_id)
-            else:
-                # Show next task
-                await show_next_task(bot, user_id, current_tasks + 1, context)
-        else:
-            # Task failed
-            await bot.send_message(
-                user_id, 
-                "❌ <b>Task Failed!</b>\n\n"
-                f"⏱️ Stayed less than 30 seconds.\n"
-                "💡 Click <b>Tasks</b> to retry.",
-                parse_mode='HTML'
-            )
-    
-    # Clean up
+async def schedule_task_check(bot, user_id: int, task_num: int, context: ContextTypes.DEFAULT_TYPE):
+    """Schedule task completion check"""
+    # Cancel previous task if exists
     if user_id in task_timers:
-        del task_timers[user_id]
+        task_timers[user_id].cancel()
+    
+    # Create new task
+    task = asyncio.create_task(
+        check_task_completion(bot, user_id, task_num, context)
+    )
+    task_timers[user_id] = task
+
+async def check_task_completion(bot, user_id: int, task_num: int, context: ContextTypes.DEFAULT_TYPE):
+    """Check if task completed after 35 seconds"""
+    try:
+        await asyncio.sleep(35)
+        
+        user_context = context.user_data.get(user_id, {})
+        start_time = user_context.get('task_start_time')
+        
+        if start_time:
+            elapsed = (datetime.now() - start_time).total_seconds()
+            if elapsed >= TASK_DURATION:
+                # Task success
+                current_tasks = user_context.get('tasks_completed', 0) + 1
+                context.user_data[user_id]['tasks_completed'] = current_tasks
+                
+                if current_tasks >= MAX_TASKS:
+                    await give_final_reward(bot, user_id, context)
+                else:
+                    await show_next_task(bot, user_id, current_tasks + 1, context)
+            else:
+                # Task failed
+                await bot.send_message(
+                    user_id,
+                    "❌ <b>Task Failed!</b>\n\n"
+                    f"⏱️ Stayed less than 30 seconds.\n"
+                    "💡 Click <b>Tasks</b> to retry.",
+                    parse_mode='HTML'
+                )
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        print(f"⚠️ Task check error: {e}")
+    finally:
+        # Clean up
+        if user_id in task_timers:
+            del task_timers[user_id]
 
 async def show_next_task(bot, user_id: int, task_num: int, context: ContextTypes.DEFAULT_TYPE):
-    """Show next task automatically"""
+    """Show next task"""
     links = {
         2: os.getenv("TASK_LINK_2", "https://adsterra.com"),
         3: os.getenv("TASK_LINK_3", "https://monetag.com"),
@@ -125,28 +138,24 @@ async def show_next_task(bot, user_id: int, task_num: int, context: ContextTypes
         context.user_data[user_id] = {}
     
     context.user_data[user_id]['task_start_time'] = datetime.now()
-    context.user_data[user_id]['tasks_completed'] = task_num - 1
     
     # Schedule next check
-    import asyncio
-    task_timers[user_id] = asyncio.create_task(
-        check_task_auto(bot, user_id, task_num, context)
-    )
+    await schedule_task_check(bot, user_id, task_num, context)
 
-async def give_final_reward(bot, user_id: int):
-    """Give 80 Rs reward after all tasks"""
+async def give_final_reward(bot, user_id: int, context: ContextTypes.DEFAULT_TYPE):
+    """Give 80 Rs reward"""
     try:
         user = await db.get_user(user_id)
         current_balance = float(user.get("balance", 0))
         new_balance = current_balance + TASK_REWARD
         
-        # Update balance & completion time
+        # Update balance
         db.client.table("users").update({
             "balance": new_balance,
             "last_task_completion": datetime.now().isoformat()
         }).eq("user_id", user_id).execute()
         
-        # Check for referrer
+        # Check referrer
         referral_response = db.client.table("referral_history").select("referrer_id").eq("new_user_id", user_id).execute()
         if referral_response.data:
             referrer_id = referral_response.data[0]["referrer_id"]
@@ -154,8 +163,10 @@ async def give_final_reward(bot, user_id: int):
             referrer = await db.get_user(referrer_id)
             referrer_balance = float(referrer.get("balance", 0))
             new_referrer_balance = referrer_balance + commission
-            db.client.table("users").update({"balance": new_referrer_balance}).eq("user_id", referrer_id).execute()
-            print(f"🤝 Task commission: {user_id} → {referrer_id} +₹{commission:.1f}")
+            db.client.table("users").update({
+                "balance": new_referrer_balance
+            }).eq("user_id", referrer_id).execute()
+            print(f"🤝 Commission: {user_id} → {referrer_id} +₹{commission:.1f}")
         
         await bot.send_message(
             user_id,
@@ -166,11 +177,11 @@ async def give_final_reward(bot, user_id: int):
             f"🔥 Share with friends for more!",
             parse_mode='HTML'
         )
-        print(f"✅ User {user_id}: +80 Rs tasks complete!")
+        print(f"✅ User {user_id}: +80 Rs")
         
     except Exception as e:
         print(f"❌ Reward error: {e}")
-        await bot.send_message(user_id, "❌ Reward error! Contact admin.")
+        await bot.send_message(user_id, "❌ Reward error!")
 
 # Handler
 tasks_handler = MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks_menu)
