@@ -67,9 +67,7 @@ async def main():
     print("  • Withdrawals (380+ Rs, 12+ refs)")
     print("  • Broadcast + Cleanup")
     
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling(drop_pending_updates=True)
+    await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
