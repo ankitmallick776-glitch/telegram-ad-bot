@@ -3,15 +3,11 @@ from telegram.ext import ContextTypes, MessageHandler, filters
 from utils.supabase import db
 from datetime import datetime, timedelta
 import os
-import asyncio
 
 TASK_REWARD = 80.0
 TASK_DURATION = 30
 COOLDOWN_HOURS = 3
 MAX_TASKS = 4
-
-# Global task timers
-task_timers = {}
 
 async def tasks_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Main tasks menu"""
@@ -36,6 +32,7 @@ async def tasks_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Start first task
     context.user_data['tasks_completed'] = 0
     context.user_data['task_start_time'] = datetime.now()
+    context.user_data['current_task'] = 1
     
     await show_task_1(update, context)
 
@@ -52,97 +49,110 @@ async def show_task_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⏱️ <b>Instructions:</b>\n"
         f"1️⃣ Click button below\n"
         f"2️⃣ <b>Stay on website 30 seconds</b>\n"
-        f"3️⃣ Return here automatically\n\n"
-        f"⚠️ <b>Leave early = FAIL!</b>\n\n"
+        f"3️⃣ Return here and click next task\n\n"
+        f"⚠️ <b>You must wait 30 seconds!</b>\n\n"
         f"👇 <b>Start Task 1:</b>",
         reply_markup=reply_markup,
         parse_mode='HTML'
     )
     
-    # Schedule check
-    await schedule_task_check(update.get_bot(), user_id, 1, context)
+    context.user_data['task_start_time'] = datetime.now()
+    context.user_data['current_task'] = 1
 
-async def schedule_task_check(bot, user_id: int, task_num: int, context: ContextTypes.DEFAULT_TYPE):
-    """Schedule task completion check"""
-    # Cancel previous task if exists
-    if user_id in task_timers:
-        task_timers[user_id].cancel()
-    
-    # Create new task
-    task = asyncio.create_task(
-        check_task_completion(bot, user_id, task_num, context)
-    )
-    task_timers[user_id] = task
-
-async def check_task_completion(bot, user_id: int, task_num: int, context: ContextTypes.DEFAULT_TYPE):
-    """Check if task completed after 35 seconds"""
-    try:
-        await asyncio.sleep(35)
-        
-        user_context = context.user_data.get(user_id, {})
-        start_time = user_context.get('task_start_time')
-        
-        if start_time:
-            elapsed = (datetime.now() - start_time).total_seconds()
-            if elapsed >= TASK_DURATION:
-                # Task success
-                current_tasks = user_context.get('tasks_completed', 0) + 1
-                context.user_data[user_id]['tasks_completed'] = current_tasks
-                
-                if current_tasks >= MAX_TASKS:
-                    await give_final_reward(bot, user_id, context)
-                else:
-                    await show_next_task(bot, user_id, current_tasks + 1, context)
-            else:
-                # Task failed
-                await bot.send_message(
-                    user_id,
-                    "❌ <b>Task Failed!</b>\n\n"
-                    f"⏱️ Stayed less than 30 seconds.\n"
-                    "💡 Click <b>Tasks</b> to retry.",
-                    parse_mode='HTML'
-                )
-    except asyncio.CancelledError:
-        pass
-    except Exception as e:
-        print(f"⚠️ Task check error: {e}")
-    finally:
-        # Clean up
-        if user_id in task_timers:
-            del task_timers[user_id]
-
-async def show_next_task(bot, user_id: int, task_num: int, context: ContextTypes.DEFAULT_TYPE):
-    """Show next task"""
-    links = {
-        2: os.getenv("TASK_LINK_2", "https://adsterra.com"),
-        3: os.getenv("TASK_LINK_3", "https://monetag.com"),
-        4: os.getenv("TASK_LINK_4", "https://adsterra.com")
-    }
-    
-    link = links.get(task_num, "https://monetag.com")
-    keyboard = [[InlineKeyboardButton(f"🔗 Open Task {task_num} (Stay 30s)", url=link)]]
+async def show_task_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show Task 2"""
+    user_id = update.effective_user.id
+    link = os.getenv("TASK_LINK_2", "https://adsterra.com")
+    keyboard = [[InlineKeyboardButton("🔗 Open Task 2 (Stay 30s)", url=link)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await bot.send_message(
-        user_id,
-        f"✅ <b>Task {task_num-1} Complete!</b>\n\n"
-        f"📋 <b>TASK {task_num}/4</b>\n\n"
+    await update.message.reply_text(
+        f"✅ <b>Task 1 Complete!</b>\n\n"
+        f"📋 <b>TASK 2/4</b>\n\n"
+        f"💰 <b>Reward so far: 0 Rs</b>\n\n"
         f"⏱️ <b>Stay 30 seconds on link</b>\n\n"
         f"👇 <b>Continue:</b>",
         reply_markup=reply_markup,
         parse_mode='HTML'
     )
     
-    # Update context
-    if user_id not in context.user_data:
-        context.user_data[user_id] = {}
-    
-    context.user_data[user_id]['task_start_time'] = datetime.now()
-    
-    # Schedule next check
-    await schedule_task_check(bot, user_id, task_num, context)
+    context.user_data['task_start_time'] = datetime.now()
+    context.user_data['current_task'] = 2
 
-async def give_final_reward(bot, user_id: int, context: ContextTypes.DEFAULT_TYPE):
+async def show_task_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show Task 3"""
+    user_id = update.effective_user.id
+    link = os.getenv("TASK_LINK_3", "https://monetag.com")
+    keyboard = [[InlineKeyboardButton("🔗 Open Task 3 (Stay 30s)", url=link)]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"✅ <b>Task 2 Complete!</b>\n\n"
+        f"📋 <b>TASK 3/4</b>\n\n"
+        f"💰 <b>Reward so far: 0 Rs</b>\n\n"
+        f"⏱️ <b>Stay 30 seconds on link</b>\n\n"
+        f"👇 <b>Continue:</b>",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+    
+    context.user_data['task_start_time'] = datetime.now()
+    context.user_data['current_task'] = 3
+
+async def show_task_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show Task 4 - Final"""
+    user_id = update.effective_user.id
+    link = os.getenv("TASK_LINK_4", "https://adsterra.com")
+    keyboard = [[InlineKeyboardButton("🔗 Open Task 4 (Stay 30s)", url=link)]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"✅ <b>Task 3 Complete!</b>\n\n"
+        f"📋 <b>TASK 4/4 - FINAL!</b>\n\n"
+        f"💰 <b>Reward so far: 0 Rs</b>\n\n"
+        f"⏱️ <b>Stay 30 seconds on link</b>\n\n"
+        f"After this, you get +80 Rs! 🎉\n\n"
+        f"👇 <b>Complete:</b>",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+    
+    context.user_data['task_start_time'] = datetime.now()
+    context.user_data['current_task'] = 4
+
+async def check_task_completion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Manual check - user clicks button to verify task"""
+    user_id = update.effective_user.id
+    current_task = context.user_data.get('current_task', 1)
+    start_time = context.user_data.get('task_start_time')
+    
+    if not start_time:
+        await update.message.reply_text("⚠️ Please start task first!", parse_mode='HTML')
+        return
+    
+    elapsed = (datetime.now() - start_time).total_seconds()
+    
+    if elapsed < TASK_DURATION:
+        remaining = int(TASK_DURATION - elapsed)
+        await update.message.reply_text(
+            f"⏳ <b>Please wait {remaining} more seconds...</b>\n\n"
+            f"⏰ Timer: {int(elapsed)}/{TASK_DURATION}s",
+            parse_mode='HTML'
+        )
+        return
+    
+    # Task completed
+    if current_task >= MAX_TASKS:
+        await give_final_reward(update, context, user_id)
+    else:
+        if current_task == 1:
+            await show_task_2(update, context)
+        elif current_task == 2:
+            await show_task_3(update, context)
+        elif current_task == 3:
+            await show_task_4(update, context)
+
+async def give_final_reward(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int):
     """Give 80 Rs reward"""
     try:
         user = await db.get_user(user_id)
@@ -168,8 +178,7 @@ async def give_final_reward(bot, user_id: int, context: ContextTypes.DEFAULT_TYP
             }).eq("user_id", referrer_id).execute()
             print(f"🤝 Commission: {user_id} → {referrer_id} +₹{commission:.1f}")
         
-        await bot.send_message(
-            user_id,
+        await update.message.reply_text(
             f"🎉 <b>ALL 4 TASKS COMPLETED!</b>\n\n"
             f"💰 <b>+80 Rs added to balance!</b>\n"
             f"💳 <b>New balance: ₹{new_balance:.1f}</b>\n\n"
@@ -177,11 +186,14 @@ async def give_final_reward(bot, user_id: int, context: ContextTypes.DEFAULT_TYP
             f"🔥 Share with friends for more!",
             parse_mode='HTML'
         )
-        print(f"✅ User {user_id}: +80 Rs")
+        print(f"✅ User {user_id}: +80 Rs - ALL TASKS DONE!")
+        
+        # Clear task data
+        context.user_data.clear()
         
     except Exception as e:
         print(f"❌ Reward error: {e}")
-        await bot.send_message(user_id, "❌ Reward error!")
+        await update.message.reply_text("❌ Reward error!", parse_mode='HTML')
 
 # Handler
 tasks_handler = MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks_menu)
