@@ -13,7 +13,7 @@ from handlers.watch_ads_handler import (
 )
 from handlers.broadcast_handler import broadcast_handler, cleanup_handler
 from handlers.extra_handler import extra_handler
-from handlers.tasks_handler import tasks_handler, code_command, code_submit
+from handlers.tasks_handler import tasks_handler
 
 load_dotenv()
 logging.basicConfig(level=logging.WARNING)
@@ -26,7 +26,11 @@ async def error_handler(update: Update, context):
     pass
 
 async def unknown(update: Update, context):
-    await update.message.reply_text("👇 Use the buttons!", reply_markup=get_main_keyboard(), parse_mode='HTML')
+    await update.message.reply_text(
+        "👇 Use the buttons!",
+        reply_markup=get_main_keyboard(),
+        parse_mode='HTML'
+    )
 
 async def main():
     from utils.supabase import db
@@ -36,8 +40,7 @@ async def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_error_handler(error_handler)
     
-    app.add_handler(CommandHandler("start", start_referral, filters.Regex(".*"), has_args=True))
-    app.add_handler(code_command)
+    app.add_handler(CommandHandler("start", start_referral))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
     app.add_handler(MessageHandler(filters.Regex("^(Bonus 🎁)$"), bonus))
@@ -45,7 +48,6 @@ async def main():
     app.add_handler(MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks_handler.callback))
     app.add_handler(MessageHandler(filters.Regex("^(Extra ➡️)$"), extra_handler.callback))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
-    app.add_handler(code_submit)
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & ~filters.Regex("^(Watch Ads 💰|Balance 💳|Bonus 🎁|Refer and Earn 👥|Tasks 📋|Extra ➡️)$"),
         handle_payment_details
