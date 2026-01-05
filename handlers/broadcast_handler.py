@@ -1,165 +1,441 @@
-from telegram import Update
-from telegram.ext import ContextTypes, CommandHandler
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
+from telegram.ext import ContextTypes
 from utils.supabase import db
+from utils.rewards import generate_reward
 import os
-import asyncio
+import logging
+from datetime import date
+import json
+import html
 
-ADMIN_ID = int(os.getenv("ADMIN_ID", 7836675446))
-failed_broadcast_users = []
+logger = logging.getLogger(__name__)
 
-async def broadcast_task(context, admin_id, message, active_users):
-    """Run broadcast"""
-    global failed_broadcast_users
-    success_count = 0
-    failed_count = 0
-    total_users = len(active_users)
-    failed_broadcast_users = []
-    
-    for i, user_id in enumerate(active_users, 1):
-        try:
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=message,
-                parse_mode='HTML'
-            )
-            success_count += 1
-        except:
-            failed_count += 1
-            failed_broadcast_users.append(user_id)
-        
-        if i % 30 == 0:
-            await asyncio.sleep(1)
-    
-    try:
-        await context.bot.send_message(
-            admin_id,
-            f"✅ <b>Broadcast COMPLETE!</b>\n\n"
-            f"<b>Total:</b> {total_users}\n"
-            f"<b>Delivered:</b> {success_count}\n"
-            f"<b>Failed:</b> {failed_count}\n"
-            f"<b>Success Rate:</b> {success_count/total_users*100:.1f}%",
-            parse_mode='HTML'
-        )
-    except:
-        pass
+def get_main_keyboard():
+    """Main bot keyboard with WebApp for ads"""
+    keyboard = [
+        [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINIAPP_URL", ""))),
+         KeyboardButton("Balance 💳")],
+        [KeyboardButton("Bonus 🎁"), 
+         KeyboardButton("Refer and Earn 👥")],
+        [KeyboardButton("Tasks 📋"), 
+         KeyboardButton("Extra ➡️")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start broadcast"""
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Admin only!", parse_mode='HTML')
-        return
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generic start handler (no referral)"""
+    user_id = update.effective_user.id
+    username = update.effective_user.username or "User"
     
-    if not context.args:
-        await update.message.reply_text(
-            "<b>BROADCAST USAGE</b>\n\n"
-            "`/broadcast Hello everyone!`",
-            parse_mode='HTML'
-        )
-        return
-    
-    active_users = await db.get_active_users()
-    total_users = len(active_users)
-    
-    if total_users == 0:
-        await update.message.reply_text("❌ No active users!", parse_mode='HTML')
-        return
-    
-    if context.bot_data.get('broadcast_running'):
-        await update.message.reply_text(
-            "⚠️ Broadcast already running!\n\n"
-            "Wait for it to complete.",
-            parse_mode='HTML'
-        )
-        return
-    
-    message = ' '.join(context.args)
-    context.bot_data['broadcast_running'] = True
+    await db.create_user_if_not_exists(user_id, username)
     
     await update.message.reply_text(
-        f"✅ <b>Broadcast STARTED in background!</b>\n\n"
-        f"<b>Active users:</b> {total_users}\n"
-        f"<b>Message:</b> {message[:50]}...\n\n"
-        f"You can use other features while broadcasting!\n"
-        f"Final report will be sent when complete.",
+        "<b>🎉 Welcome to Cashyads2!</b>\n\n"
+        "💰 <b>Watch ads</b> → Earn 3-5 Rs each\n"
+        "👥 <b>Refer</b> → Earn 40 Rs + 5% commission\n"
+        "🎁 <b>Daily bonus</b> → 5 Rs (once/day)\n"
+        "📋 <b>Daily tasks</b> → 100 Rs (4 tasks)\n\n"
+        "👇 Get started!",
+        reply_markup=get_main_keyboard(),
         parse_mode='HTML'
     )
-    
-    # Don't use job_queue - run directly
-    asyncio.create_task(broadcast_task(context, update.effective_user.id, message, active_users))
 
-async def cleanup_task(context, admin_id):
-    """Delete failed users"""
-    global failed_broadcast_users
+async def start_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start with referral code - INSTANT REWARD"""
+    user_id = update.effective_user.id
+    username = update.effective_user.username or f"User{user_id}"
     
-    try:
-        total_to_delete = len(failed_broadcast_users)
-        deleted_count = 0
+    logger.info(f"REFERRAL: User {user_id} ({username}) joined with args {context.args}")
+    
+    await db.create_user_if_not_exists(user_id, username)
+    
+    if context.args:
+        referrer_code = context.args[0]
+        logger.info(f"Referral code: {referrer_code}")
         
-        await context.bot.send_message(
-            admin_id,
-            f"🧹 <b>Deleting {total_to_delete} blocked users...</b>",
-            parse_mode='HTML'
-        )
-        
-        for i, user_id in enumerate(failed_broadcast_users, 1):
+        already_referred = await db.user_already_referred(user_id)
+        if already_referred:
+            logger.warning(f"User {user_id} already has referrer! Blocking duplicate")
+        elif await db.process_referral(user_id, referrer_code):
+            logger.info("Referral processed with INSTANT reward!")
             try:
-                if await db.delete_user(user_id):
-                    deleted_count += 1
-            except:
-                pass
-            
-            if i % 20 == 0:
-                await asyncio.sleep(0.5)
-        
-        all_users = await db.get_all_user_ids()
-        remaining = len(all_users)
-        
-        await context.bot.send_message(
-            admin_id,
-            f"✅ <b>CLEANUP COMPLETE!</b>\n\n"
-            f"<b>Deleted:</b> {deleted_count}\n"
-            f"<b>Remaining:</b> {remaining}",
-            parse_mode='HTML'
-        )
-        
-        failed_broadcast_users = []
-        
-    except Exception as e:
-        print(f"❌ Cleanup error: {e}")
-    finally:
-        context.bot_data['cleanup_running'] = False
-
-async def cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start cleanup"""
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Admin only!", parse_mode='HTML')
-        return
-    
-    if not failed_broadcast_users or len(failed_broadcast_users) == 0:
-        await update.message.reply_text(
-            "❌ No failed users!\n\n"
-            "Run /broadcast first, then /cleanup.",
-            parse_mode='HTML'
-        )
-        return
-    
-    if context.bot_data.get('cleanup_running'):
-        await update.message.reply_text(
-            "⚠️ Cleanup already running!",
-            parse_mode='HTML'
-        )
-        return
-    
-    context.bot_data['cleanup_running'] = True
-    total = len(failed_broadcast_users)
+                # Notify referrer
+                referrer_info = await db.get_referrer_by_code(referrer_code)
+                if referrer_info:
+                    referrer_id = referrer_info["user_id"]
+                    await context.bot.send_message(
+                        referrer_id,
+                        f"🎉 <b>REFERRAL SUCCESS!</b>\n\n"
+                        f"New user: @{username}\n"
+                        f"💰 <b>You earned 40 Rs INSTANTLY!</b>\n"
+                        f"💳 Check your balance!",
+                        parse_mode='HTML'
+                    )
+                    logger.info(f"Instant reward notification to {referrer_id}")
+            except Exception as e:
+                logger.error(f"Referrer notification error: {e}")
     
     await update.message.reply_text(
-        f"✅ <b>Cleanup STARTED!</b>\n\n"
-        f"Removing {total} users...",
+        "<b>🎉 Welcome to Cashyads2!</b>\n\n"
+        "💰 <b>Watch ads</b> → Earn 3-5 Rs each\n"
+        "👥 <b>Refer</b> → Earn 40 Rs + 5% commission\n"
+        "🎁 <b>Daily bonus</b> → 5 Rs (once/day)\n"
+        "📋 <b>Daily tasks</b> → 100 Rs (4 tasks)\n\n"
+        "👇 Get started!",
+        reply_markup=get_main_keyboard(),
+        parse_mode='HTML'
+    )
+
+async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle mini app ad completion"""
+    user_id = update.effective_user.id
+    data = update.effective_message.web_app_data.data
+    
+    logger.info(f"WEBDATA from {user_id}: {data}")
+    
+    try:
+        data_json = json.loads(data)
+    except:
+        data_json = {}
+    
+    if data_json.get("ad_completed"):
+        reward = generate_reward()
+        await db.add_balance(user_id, reward)
+        await db.add_referral_commission(user_id, reward)
+        balance = await db.get_balance(user_id)
+        
+        await update.message.reply_text(
+            f"✅ <b>Ad watched successfully!</b>\n\n"
+            f"💰 <b>You earned {reward:.1f} Rs</b>\n"
+            f"💳 <b>New balance:</b> {balance:.1f} Rs",
+            reply_markup=get_main_keyboard(),
+            parse_mode='HTML'
+        )
+        logger.info(f"Ad reward {user_id}: {reward}")
+    else:
+        await update.message.reply_text(
+            "❌ <b>Ad cancelled!</b>\nTry again",
+            reply_markup=get_main_keyboard(),
+            parse_mode='HTML'
+        )
+
+async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show balance"""
+    user_id = update.effective_user.id
+    balance_amt = await db.get_balance(user_id)
+    
+    keyboard = [[InlineKeyboardButton("💰 Withdraw", callback_data="withdraw")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"💳 <b>Your balance: {balance_amt:.1f} Rs</b>\n\n"
+        "Ready to withdraw?",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
+async def bonus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Claim daily bonus"""
+    user_id = update.effective_user.id
+    
+    if await db.give_daily_bonus(user_id):
+        await update.message.reply_text(
+            "<b>🎁 Daily Bonus Claimed!</b>\n"
+            "<b>💰 5 Rs added!</b>\n"
+            "Check balance!",
+            reply_markup=get_main_keyboard(),
+            parse_mode='HTML'
+        )
+    else:
+        await update.message.reply_text(
+            "<b>✅ Already claimed today!</b>\n"
+            "Try tomorrow!",
+            reply_markup=get_main_keyboard(),
+            parse_mode='HTML'
+        )
+
+async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show referral info"""
+    user_id = update.effective_user.id
+    user = await db.get_user(user_id)
+    
+    if not user:
+        await update.message.reply_text(
+            "<b>User not found!</b>",
+            reply_markup=get_main_keyboard(),
+            parse_mode='HTML'
+        )
+        return
+    
+    referral_code = user.get("referral_code", "")
+    bot_username = os.getenv("BOT_USERNAME", "Cashyadsbot")
+    link = f"https://t.me/{bot_username}?start={referral_code}"
+    referrals = int(user.get("referrals", 0))
+    
+    keyboard = [[InlineKeyboardButton("📤 Share Link", url=f"https://t.me/share/url?url={link}&text=Join%20Cashyads2%20and%20earn%20money%20watching%20ads%20💰")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"👥 <b>Your Referral Link</b>\n"
+        f"`{link}`\n\n"
+        f"📊 <b>Referrals:</b> {referrals}\n\n"
+        f"<b>💰 Earnings:</b>\n"
+        f"• 40 Rs <b>INSTANT</b> per referral\n"
+        f"• 5% commission on their ad earnings\n\n"
+        f"👇 Click to share!",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
+async def withdraw_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show withdrawal payment methods"""
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("💳 Paytm", callback_data="withdraw_paytm")],
+        [InlineKeyboardButton("🏧 UPI", callback_data="withdraw_upi")],
+        [InlineKeyboardButton("🏦 Bank Transfer", callback_data="withdraw_bank")],
+        [InlineKeyboardButton("💵 Paypal", callback_data="withdraw_paypal")],
+        [InlineKeyboardButton("₿ USDT TRC20", callback_data="withdraw_usdt")],
+        [InlineKeyboardButton("🔙 Back", callback_data="back_balance")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        "<b>💳 Choose Payment Method</b>\n\n"
+        "Select your preferred withdrawal method below:",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
+async def process_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process withdrawal request"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    method = query.data.split("_")[1].upper()
+    
+    check = await db.can_withdraw(user_id)
+    if check["can"]:
+        bal = await db.get_balance(user_id)
+        keyboard = [
+            [InlineKeyboardButton("✅ Confirm Withdrawal", callback_data=f"confirm_withdraw_{method}")],
+            [InlineKeyboardButton("🔙 Back", callback_data="back_methods")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"<b>✅ Withdrawal Ready!</b>\n\n"
+            f"💰 <b>Amount:</b> {bal:.1f}\n"
+            f"💳 <b>Method:</b> {method}\n"
+            f"👥 <b>Referrals:</b> {check['referrals']}\n\n"
+            f"<b>✅ All requirements met!</b>\n"
+            f"Click confirm to proceed.",
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+    else:
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back_methods")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"<b>❌ Cannot Withdraw!</b>\n\n"
+            f"💳 <b>Method Selected:</b> {method}\n"
+            f"<b>Why you can't withdraw:</b>\n"
+            f"{check['reason']}\n\n"
+            f"<b>📋 Requirements:</b>\n"
+            f"• Minimum balance: 380 Rs\n"
+            f"• Minimum referrals: 12\n\n"
+            f"💡 Keep earning to unlock withdrawals!",
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+
+async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Confirm withdrawal and ask for payment details"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    method = query.data.split("_", 2)[2].upper()
+    bal = await db.get_balance(user_id)
+    
+    # Store in context
+    context.user_data['withdrawal_method'] = method
+    context.user_data['withdrawal_amount'] = bal
+    context.user_data['withdrawal_user_id'] = user_id
+    
+    if method == "PAYTM":
+        await query.edit_message_text(
+            f"💳 <b>Enter Your Paytm Number</b>\n\n"
+            f"💰 Amount: {bal:.1f}\n"
+            f"💳 Method: PAYTM\n\n"
+            f"Please reply with your 10-digit Paytm number.\n"
+            f"<b>Example:</b> 9876543210",
+            parse_mode='HTML'
+        )
+    elif method == "UPI":
+        await query.edit_message_text(
+            f"🏧 <b>Enter Your UPI ID</b>\n\n"
+            f"💰 Amount: {bal:.1f}\n"
+            f"💳 Method: UPI\n\n"
+            f"Please reply with your UPI ID.\n"
+            f"<b>Example:</b> username@paytm or name@okhdfcbank",
+            parse_mode='HTML'
+        )
+    elif method == "BANK":
+        await query.edit_message_text(
+            f"🏦 <b>Enter Your Bank Details</b>\n\n"
+            f"💰 Amount: {bal:.1f}\n"
+            f"💳 Method: BANK TRANSFER\n\n"
+            f"Please reply with your details in this format:\n"
+            f"<code>Account Number\nIFSC Code\nAccount Holder Name</code>\n\n"
+            f"<b>Example:</b>\n"
+            f"<code>1234567890\n"
+            f"HDFC0000123\n"
+            f"John Doe</code>",
+            parse_mode='HTML'
+        )
+    elif method == "PAYPAL":
+        await query.edit_message_text(
+            f"💵 <b>Enter Your PayPal Email</b>\n\n"
+            f"💰 Amount: {bal:.1f}\n"
+            f"💳 Method: PAYPAL\n\n"
+            f"Please reply with your PayPal email address.\n"
+            f"<b>Example:</b> john@gmail.com",
+            parse_mode='HTML'
+        )
+    elif method == "USDT":
+        await query.edit_message_text(
+            f"₿ <b>Enter Your USDT TRC20 Wallet</b>\n\n"
+            f"💰 Amount: {bal:.1f}\n"
+            f"💳 Method: USDT TRC20\n\n"
+            f"Please reply with your TRC20 wallet address.\n"
+            f"<b>Example:</b> TQCp8xxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            parse_mode='HTML'
+        )
+
+async def handle_payment_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process payment details and complete withdrawal"""
+    user_id = update.effective_user.id
+    payment_details = update.message.text
+    
+    # Check session
+    withdrawal_method = context.user_data.get('withdrawal_method')
+    if not withdrawal_method:
+        await update.message.reply_text(
+            "<b>Session expired!</b>\nPlease start withdrawal again from Balance button.",
+            reply_markup=get_main_keyboard(),
+            parse_mode='HTML'
+        )
+        return
+    
+    method = withdrawal_method
+    amount = context.user_data['withdrawal_amount']
+    
+    # Deduct balance
+    success = await db.add_balance(user_id, -amount)
+    
+    await update.message.reply_text(
+        f"✅ <b>Withdrawal Processed!</b>\n\n"
+        f"💰 <b>Amount:</b> {amount:.1f}\n"
+        f"💳 <b>Method:</b> {method}\n"
+        f"📝 <b>Payment Details Received</b>\n"
+        f"📊 <b>Status:</b> Processing...\n"
+        f"⏰ Admin will contact within 24h\n"
+        f"💳 <b>New Balance:</b> 0.0",
+        reply_markup=get_main_keyboard(),
         parse_mode='HTML'
     )
     
-    asyncio.create_task(cleanup_task(context, update.effective_user.id))
+    await update.message.reply_text(
+        f"📋 <b>WITHDRAWAL CONFIRMATION</b>\n"
+        f"Your withdrawal request has been <b>SUCCESSFULLY SUBMITTED</b>\n\n"
+        f"<b>⏱️ Processing Details:</b>\n"
+        f"• Processing time: <b>5-7 working days</b>\n"
+        f"• Excludes weekends & public holidays\n"
+        f"• Depends on your bank/payment service\n\n"
+        f"<b>❓ Why it takes time:</b>\n"
+        f"• Bank verification & KYC checks\n"
+        f"• Payment gateway processing\n"
+        f"• Fraud prevention & security\n"
+        f"• Weekend/holiday delays\n\n"
+        f"<b>📋 What happens next:</b>\n"
+        f"1️⃣ Our admin verifies your request\n"
+        f"2️⃣ Amount transferred to your account\n"
+        f"3️⃣ Bank processes the payment\n"
+        f"4️⃣ Money appears in your account\n\n"
+        f"<b>🆘 Need Help?</b>\n"
+        f"Contact @CashyadsSupportBot\n"
+        f"❌ We <b>never</b> charge for withdrawals!\n"
+        f"💰 Keep earning more! Watch ads → refer friends.",
+        reply_markup=get_main_keyboard(),
+        parse_mode='HTML'
+    )
+    
+    # Notify admin
+    admin_id = int(os.getenv("ADMIN_ID", "7836675446"))
+    try:
+        escaped_details = (payment_details
+                          .replace('&', '&amp;')
+                          .replace('<', '&lt;')
+                          .replace('>', '&gt;'))
+        await context.bot.send_message(
+            admin_id,
+            f"🔔 <b>NEW WITHDRAWAL!</b>\n\n"
+            f"👤 <b>User ID:</b> {user_id}\n"
+            f"💰 <b>Amount:</b> {amount:.1f}\n"
+            f"💳 <b>Method:</b> {method}\n"
+            f"📝 <b>Payment Details:</b>\n"
+            f"<code>{escaped_details}</code>\n"
+            f"📅 {date.today()}",
+            parse_mode='HTML'
+        )
+        logger.info(f"Admin notified: {user_id} {amount} {method}")
+    except Exception as e:
+        logger.error(f"Admin notification failed: {e}")
+    
+    # Clear session
+    context.user_data.clear()
 
-broadcast_handler = CommandHandler("broadcast", broadcast)
-cleanup_handler = CommandHandler("cleanup", cleanup)
+async def back_to_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Go back to balance"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    bal = await db.get_balance(user_id)
+    
+    keyboard = [[InlineKeyboardButton("💰 Withdraw", callback_data="withdraw")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        f"💳 <b>Your balance: {bal:.1f} Rs</b>\n\n"
+        "Ready to withdraw?",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
+async def back_methods(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Go back to payment methods"""
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("💳 Paytm", callback_data="withdraw_paytm")],
+        [InlineKeyboardButton("🏧 UPI", callback_data="withdraw_upi")],
+        [InlineKeyboardButton("🏦 Bank Transfer", callback_data="withdraw_bank")],
+        [InlineKeyboardButton("💵 Paypal", callback_data="withdraw_paypal")],
+        [InlineKeyboardButton("₿ USDT TRC20", callback_data="withdraw_usdt")],
+        [InlineKeyboardButton("🔙 Back", callback_data="back_balance")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        "<b>💳 Choose Payment Method</b>\n\n"
+        "Select your preferred withdrawal method below:",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
