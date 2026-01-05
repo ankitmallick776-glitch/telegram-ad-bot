@@ -1,23 +1,32 @@
-cat > .gitignore << 'EOF'
-# Environment
-.env
-*.env
-
-# Python
+# Byte-compiled / optimized files
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+bot.log
+*.log
+
+# Dependencies
 venv/
 env/
 ENV/
 
-# Logs
-*.log
-logs/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # OS
 .DS_Store
 Thumbs.db
-EOF
+
+# Production
+data/
+logs/
