@@ -15,7 +15,7 @@ from handlers.watch_ads_handler import (
 )
 from handlers.broadcast_handler import broadcast_handler, cleanup_handler
 from handlers.extra_handler import extra_handler
-from handlers.tasks_handler import tasks_handler,
+from handlers.tasks_handler import tasks_handler
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
