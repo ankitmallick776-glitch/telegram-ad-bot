@@ -15,7 +15,7 @@ from handlers.watch_ads_handler import (
 )
 from handlers.broadcast_handler import broadcast_handler, cleanup_handler
 from handlers.extra_handler import extra_handler
-from handlers.tasks_handler import tasks_handler, code_command, code_submit
+from handlers.tasks_handler import tasks_handler,
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -56,7 +56,7 @@ async def main():
     app.add_handler(CommandHandler("start", start_referral, filters.Regex(".*"), has_args=True))
     
     # /code command (admin)
-    app.add_handler(code_command)
+    # app.add_handler(code_command)
     
     # Generic /start (no args) - LAST before message handlers
     app.add_handler(CommandHandler("start", start))
@@ -79,7 +79,7 @@ async def main():
     # TASK & CODE HANDLERS (MUST BE BEFORE payment)
     # ============================================
     # Code handler checks context internally - only processes if waiting for code/task
-    app.add_handler(code_submit)
+    # app.add_handler(code_submit)
     
     # ============================================
     # PAYMENT DETAILS (CATCH-ALL - LAST)
