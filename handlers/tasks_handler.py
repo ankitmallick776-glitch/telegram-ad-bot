@@ -1,10 +1,7 @@
-# handlers/tasks_handler.py
-
 from telegram import Update
 from telegram.ext import ContextTypes
 
 async def tasks_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Temporary placeholder for Tasks feature."""
     await update.message.reply_text(
         "<b>📋 Tasks Coming Soon!</b>\n\n"
         "🚧 Our new tasks system is under development.\n"
@@ -12,6 +9,5 @@ async def tasks_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
-# Dummy placeholders so imports from main.py do not fail
-code_command = None
-code_submit = None
+# For compatibility if main.py uses taskshandler.callback
+taskshandler = type("Obj", (), {"callback": tasks_handler})
