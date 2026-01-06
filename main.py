@@ -69,7 +69,7 @@ async def main():
     app.add_handler(MessageHandler(filters.Regex("^(Balance 💳)$"), balance))
     app.add_handler(MessageHandler(filters.Regex("^(Bonus 🎁)$"), bonus))
     app.add_handler(MessageHandler(filters.Regex("^(Refer and Earn 👥)$"), refer))
-    app.add_handler(MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks_handler.callback))
+    app.add_handler(MessageHandler(filters.Regex("^(Tasks 📋)$"), tasks_handler))
     app.add_handler(MessageHandler(filters.Regex("^(Extra ➡️)$"), extra_handler.callback))
     
     # Web app data (ads completion)
