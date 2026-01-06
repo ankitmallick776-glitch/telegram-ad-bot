@@ -1,3 +1,5 @@
+# handlers/tasks_handler.py
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -10,7 +12,6 @@ async def tasks_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
-# For compatibility with existing imports in main.py
-taskshandler = type("Obj", (), {"callback": tasks_handler})
-codecommand = None
-codesubmit = None
+# Dummy placeholders so imports from main.py do not fail
+code_command = None
+code_submit = None
