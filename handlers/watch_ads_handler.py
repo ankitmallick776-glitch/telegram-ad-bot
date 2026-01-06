@@ -8,12 +8,26 @@ import json
 
 def get_main_keyboard():
     """Get main menu keyboard with all buttons"""
-    keyboard = [
-        [KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=os.getenv("MINI_APP_URL")))],
-        [KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")],
-        [KeyboardButton("Refer and Earn 👥"), KeyboardButton("Tasks 📋")],
-        [KeyboardButton("Extra ➡️")]
-    ]
+    mini_app_url = os.getenv("MINI_APP_URL")
+    
+    keyboard = []
+    
+    # Add Watch Ads button with web app (only if URL exists)
+    if mini_app_url:
+        try:
+            keyboard.append([KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=mini_app_url))])
+        except Exception as e:
+            print(f"⚠️ WebApp error: {e}, using regular button instead")
+            keyboard.append([KeyboardButton("Watch Ads 💰")])
+    else:
+        print("⚠️ MINI_APP_URL not set, using regular Watch Ads button")
+        keyboard.append([KeyboardButton("Watch Ads 💰")])
+    
+    # Add other buttons
+    keyboard.append([KeyboardButton("Balance 💳"), KeyboardButton("Bonus 🎁")])
+    keyboard.append([KeyboardButton("Refer and Earn 👥"), KeyboardButton("Tasks 📋")])
+    keyboard.append([KeyboardButton("Extra ➡️")])
+    
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
 
