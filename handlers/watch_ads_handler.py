@@ -8,7 +8,8 @@ import json
 
 def get_main_keyboard():
     """Get main menu keyboard with all buttons"""
-    mini_app_url = os.getenv("MINI_APP_URL")
+    # Use Cloudflare Pages URL or fallback to env variable
+    mini_app_url = os.getenv("MINI_APP_URL", "https://teleadviewer.pages.dev/")
     
     keyboard = []
     
@@ -16,6 +17,7 @@ def get_main_keyboard():
     if mini_app_url:
         try:
             keyboard.append([KeyboardButton("Watch Ads 💰", web_app=WebAppInfo(url=mini_app_url))])
+            print(f"✅ Watch Ads button created with: {mini_app_url}")
         except Exception as e:
             print(f"⚠️ WebApp error: {e}, using regular button instead")
             keyboard.append([KeyboardButton("Watch Ads 💰")])
