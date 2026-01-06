@@ -8,6 +8,3 @@ async def tasks_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✅ Watch ads and use referrals to keep earning in the meantime!",
         parse_mode="HTML"
     )
-
-# For compatibility if main.py uses taskshandler.callback
-taskshandler = type("Obj", (), {"callback": tasks_handler})
